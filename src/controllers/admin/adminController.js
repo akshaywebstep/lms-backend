@@ -1,8 +1,17 @@
 'use strict'
 
 const AdminService = require('../../services/admin/admin.service')
+const { logActivity } = require('../../utils/admin/activityLogger')
+const { createNotification } = require('../../utils/admin/notificationHelper')
 
 const PANEL = 'admin'
+const MODULE = 'admin'
+
+const getAdminName = (req) => {
+  if (!req.user && !req.admin) return 'Admin'
+  const u = req.user || req.admin
+  return u.name || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email || 'Admin'
+}
 
 /**
  * 1. Get Dashboard Stats
@@ -43,7 +52,16 @@ exports.createCoach = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Name and email are required' })
     }
     const result = await AdminService.createCoach(body)
-    return res.status(result.status ? 201 : 400).json(result.status ? result.data : result)
+    if (!result.status) {
+      await logActivity(req, PANEL, 'coaches', 'create', result, false).catch(() => {})
+      return res.status(400).json(result)
+    }
+
+    await logActivity(req, PANEL, 'coaches', 'create', result.data, true).catch(() => {})
+    const adminName = getAdminName(req)
+    await createNotification(req, 'New Coach Created', `Coach '${body.name}' was created by ${adminName}.`, 'Admins').catch(() => {})
+
+    return res.status(201).json(result.data)
   } catch (error) {
     console.error('❌ Error in createCoach controller:', error)
     return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
@@ -66,7 +84,35 @@ exports.coachDetail = async (req, res) => {
 }
 
 /**
- * 5. Update Coach Status
+ * 5. Update Coach
+ * PUT /api/admin/coaches/:id
+ */
+exports.updateCoach = async (req, res) => {
+  try {
+    const { id } = req.params
+    const result = await AdminService.updateCoach(id, req.body)
+    return res.status(result.status ? 200 : 400).json(result.status ? result.data : result)
+  } catch (error) {
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
+}
+
+/**
+ * 6. Delete Coach
+ * DELETE /api/admin/coaches/:id
+ */
+exports.deleteCoach = async (req, res) => {
+  try {
+    const { id } = req.params
+    const result = await AdminService.deleteCoach(id)
+    return res.status(result.status ? 200 : 404).json(result.status ? result.data : result)
+  } catch (error) {
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
+}
+
+/**
+ * 7. Update Coach Status
  * PATCH /api/admin/coaches/:id/status
  */
 exports.updateCoachStatus = async (req, res) => {
@@ -85,7 +131,7 @@ exports.updateCoachStatus = async (req, res) => {
 }
 
 /**
- * 6. Get Students List
+ * 8. Get Students List
  * GET /api/admin/students
  */
 exports.students = async (req, res) => {
@@ -99,7 +145,24 @@ exports.students = async (req, res) => {
 }
 
 /**
- * 7. Get Student Detail
+ * 9. Create Student
+ * POST /api/admin/students
+ */
+exports.createStudent = async (req, res) => {
+  try {
+    const body = req.body || {}
+    if (!body.name || !body.email) {
+      return res.status(400).json({ success: false, message: 'Name and email are required' })
+    }
+    const result = await AdminService.createStudent(body)
+    return res.status(result.status ? 201 : 400).json(result.status ? result.data : result)
+  } catch (error) {
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
+}
+
+/**
+ * 10. Get Student Detail
  * GET /api/admin/students/:id
  */
 exports.studentDetail = async (req, res) => {
@@ -114,7 +177,35 @@ exports.studentDetail = async (req, res) => {
 }
 
 /**
- * 8. Update Student Status
+ * 11. Update Student
+ * PUT /api/admin/students/:id
+ */
+exports.updateStudent = async (req, res) => {
+  try {
+    const { id } = req.params
+    const result = await AdminService.updateStudent(id, req.body)
+    return res.status(result.status ? 200 : 400).json(result.status ? result.data : result)
+  } catch (error) {
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
+}
+
+/**
+ * 12. Delete Student
+ * DELETE /api/admin/students/:id
+ */
+exports.deleteStudent = async (req, res) => {
+  try {
+    const { id } = req.params
+    const result = await AdminService.deleteStudent(id)
+    return res.status(result.status ? 200 : 404).json(result.status ? result.data : result)
+  } catch (error) {
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
+}
+
+/**
+ * 13. Update Student Status
  * PATCH /api/admin/students/:id/status
  */
 exports.updateStudentStatus = async (req, res) => {
@@ -133,7 +224,7 @@ exports.updateStudentStatus = async (req, res) => {
 }
 
 /**
- * 9. Get Payments List
+ * 14. Get Payments List
  * GET /api/admin/payments
  */
 exports.payments = async (req, res) => {
@@ -147,7 +238,7 @@ exports.payments = async (req, res) => {
 }
 
 /**
- * 10. Platform Settings
+ * 15. Platform Settings
  */
 exports.getPlatformSettings = async (req, res) => {
   try {
@@ -166,5 +257,48 @@ exports.updatePlatformSettings = async (req, res) => {
   } catch (error) {
     console.error('❌ Error in updatePlatformSettings controller:', error)
     return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
+}
+
+/**
+ * 16. Reports, Subscriptions, Block/Unblock
+ */
+exports.reports = async (req, res) => {
+  try {
+    const result = await AdminService.getReports()
+    return res.status(result.status ? 200 : 500).json(result.status ? result.data : result)
+  } catch (error) {
+    return res.status(500).json({ status: false, message: error.message })
+  }
+}
+
+exports.subscriptions = async (req, res) => {
+  try {
+    const result = await AdminService.getSubscriptions()
+    return res.status(result.status ? 200 : 500).json(result.status ? result.data : result)
+  } catch (error) {
+    return res.status(500).json({ status: false, message: error.message })
+  }
+}
+
+exports.blockUser = async (req, res) => {
+  try {
+    const { userId } = req.body
+    if (!userId) return res.status(400).json({ success: false, message: 'User ID is required' })
+    const result = await AdminService.updateCoachStatus(userId, 'blocked')
+    return res.status(result.status ? 200 : 400).json(result.status ? result.data : result)
+  } catch (error) {
+    return res.status(500).json({ status: false, message: error.message })
+  }
+}
+
+exports.unblockUser = async (req, res) => {
+  try {
+    const { userId } = req.body
+    if (!userId) return res.status(400).json({ success: false, message: 'User ID is required' })
+    const result = await AdminService.updateCoachStatus(userId, 'active')
+    return res.status(result.status ? 200 : 400).json(result.status ? result.data : result)
+  } catch (error) {
+    return res.status(500).json({ status: false, message: error.message })
   }
 }

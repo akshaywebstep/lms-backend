@@ -1,13 +1,16 @@
 'use strict'
 
 const AuthService = require('../services/auth.service')
-const userModel = require('../models/user.model')
+const UserService = require("../services/user.service");
 const { ok, created, fail } = require('../utils/response')
+const { toPublicUser, cleanEmail } = require("../utils/userHelper");
 const { hashPassword, verifyPassword } = require('../utils/password')
 const { makeId } = require('../utils/id')
 const { sendMail } = require('../services/mail')
-const { env, withTransaction, query, first } = require('../config/db')
+const { PasswordOtp, ResetToken, User } = require("../models");
+const { env } = require("../config/db");
 const crypto = require('crypto')
+const { Op } = require("sequelize");
 
 const login = async (ctx) => {
   try {
@@ -27,8 +30,9 @@ const register = async (ctx) => {
   }
 }
 
-const me = async (ctx) => ok(ctx.res, { user: userModel.toPublicUser(ctx.user) })
-const verifyToken = async (ctx) => ok(ctx.res, { valid: true, user: userModel.toPublicUser(ctx.user) })
+const me = async (ctx) => ok(ctx.res, { user: toPublicUser(ctx.user) });
+const verifyToken = async (ctx) =>
+  ok(ctx.res, { valid: true, user: toPublicUser(ctx.user) });
 const verifyEmail = async (ctx) => ok(ctx.res, { success: true, verified: true, token: ctx.body.token || ctx.query.get('token') || null })
 
 const refreshToken = async (ctx) => {
@@ -54,96 +58,160 @@ const logout = async (ctx) => {
 }
 
 const forgotPassword = async (ctx) => {
-  const email = userModel.cleanEmail(ctx.body.email)
+  const email = cleanEmail(ctx.body.email);
   if (!email) return fail(ctx.res, 400, 'Email is required')
-  const user = await userModel.findByEmail(email)
-  if (!user) return fail(ctx.res, 404, 'No account found for this email')
+  const userInstance = await UserService.findByEmail(email);
+  if (!userInstance)
+    return fail(ctx.res, 404, "No account found for this email");
 
-  const resetToken = makeId('reset')
-  const otp = String(crypto.randomInt(100000, 999999))
-  const hashedOtp = hashPassword(otp)
-  await withTransaction(async (connection) => {
-    await connection.execute('DELETE FROM reset_tokens WHERE email = ?', [email])
-    await connection.execute('DELETE FROM password_otps WHERE email = ?', [email])
-    await connection.execute('INSERT INTO reset_tokens (token, email, expires_at) VALUES (?, ?, ?)', [
-      resetToken,
-      email,
-      new Date(Date.now() + 15 * 60 * 1000),
-    ])
-    await connection.execute('INSERT INTO password_otps (email, otp_hash, salt, expires_at) VALUES (?, ?, ?, ?)', [
-      email,
-      hashedOtp.passwordHash,
-      hashedOtp.salt,
-      new Date(Date.now() + 10 * 60 * 1000),
-    ])
-  })
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+  await ResetToken.create({
+    token: resetToken,
+    email,
+    expires_at: expiresAt,
+  });
+
   await sendMail({
-    module: 'admin',
-    action: 'forgot-password',
+    module: "auth",
+    action: "forgot-password",
     to: email,
-    vars: { name: user.name, appName: env.appName, otp, resetToken },
-  })
-  return ok(ctx.res, { resetToken, demoOtp: otp, message: 'Reset token and OTP generated' })
+    vars: {
+      name: userInstance.name,
+      appName: env.appName,
+      loginUrl: `${env.publicUrl}/reset-password?token=${resetToken}`,
+    },
+  }).catch(() => {});
+
+  return ok(ctx.res, {
+    success: true,
+    message: "Password reset link sent to your email",
+  });
 }
 
 const requestPasswordOtp = async (ctx) => {
-  const email = userModel.cleanEmail(ctx.body.email)
+  const email = cleanEmail(ctx.body.email);
   if (!email) return fail(ctx.res, 400, 'Email is required')
-  const user = await userModel.findByEmail(email)
-  if (!user) return fail(ctx.res, 404, 'No account found for this email')
-  const otp = String(crypto.randomInt(100000, 999999))
-  const hashed = hashPassword(otp)
-  await query('DELETE FROM password_otps WHERE email = ?', [email])
-  await query('INSERT INTO password_otps (email, otp_hash, salt, expires_at) VALUES (?, ?, ?, ?)', [
+  const userInstance = await UserService.findByEmail(email);
+  if (!userInstance)
+    return fail(ctx.res, 404, "No account found for this email");
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const salt = crypto.randomBytes(16).toString("hex");
+  const otpHash = crypto
+    .pbkdf2Sync(otp, salt, 1000, 64, "sha512")
+    .toString("hex");
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+  await PasswordOtp.create({
     email,
-    hashed.passwordHash,
-    hashed.salt,
-    new Date(Date.now() + 10 * 60 * 1000),
-  ])
+    otp_hash: otpHash,
+    salt,
+    expires_at: expiresAt,
+  });
+
   await sendMail({
-    module: 'admin',
-    action: 'forgot-password',
+    module: "auth",
+    action: "password-reset-otp",
     to: email,
-    vars: { name: user.name, appName: env.appName, otp },
-  })
-  return ok(ctx.res, { success: true, demoOtp: otp })
+    vars: {
+      name: userInstance.name,
+      appName: env.appName,
+      otp,
+    },
+  }).catch(() => {});
+
+  return ok(ctx.res, { success: true, message: "OTP sent to your email" });
 }
 
 const resetPassword = async (ctx) => {
-  const { token, email, otp, password } = ctx.body
-  if (!password) return fail(ctx.res, 400, 'New password is required')
-  let targetEmail = userModel.cleanEmail(email)
+  const { token, newPassword } = ctx.body;
+  if (!token || !newPassword)
+    return fail(ctx.res, 400, "Token and new password are required");
 
-  if (token) {
-    const reset = await first('SELECT * FROM reset_tokens WHERE token = ? AND used_at IS NULL AND expires_at > NOW()', [token])
-    if (!reset) return fail(ctx.res, 400, 'Reset token is invalid or expired')
-    targetEmail = reset.email
-  }
-  if (otp) {
-    const savedOtp = await first('SELECT * FROM password_otps WHERE email = ? AND used_at IS NULL AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1', [targetEmail])
-    if (!savedOtp || !verifyPassword(otp, { salt: savedOtp.salt, passwordHash: savedOtp.otp_hash })) {
-      return fail(ctx.res, 400, 'OTP is invalid or expired')
-    }
-    await query('UPDATE password_otps SET used_at = NOW() WHERE id = ?', [savedOtp.id])
-  }
-  const user = await userModel.findByEmail(targetEmail)
-  if (!user) return fail(ctx.res, 404, 'User not found')
-  await userModel.changePassword(user.id, hashPassword(password))
-  if (token) await query('UPDATE reset_tokens SET used_at = NOW() WHERE token = ?', [token])
-  return ok(ctx.res, { success: true })
+  const record = await ResetToken.findOne({
+    where: {
+      token,
+      used_at: null,
+      expires_at: { [Op.gt]: new Date() },
+    },
+  });
+  if (!record) return fail(ctx.res, 400, "Invalid or expired reset token");
+
+  const hashed = hashPassword(newPassword);
+  await User.update(
+    { password_hash: hashed.passwordHash, salt: hashed.salt },
+    { where: { email: record.email } },
+  );
+
+  await ResetToken.update({ used_at: new Date() }, { where: { token } });
+  return ok(ctx.res, { success: true, message: "Password reset successfully" });
 }
 
 const changePassword = async (ctx) => {
-  const { oldPassword, newPassword } = ctx.body
-  if (!oldPassword || !newPassword) return fail(ctx.res, 400, 'Old password and new password are required')
-  if (!verifyPassword(oldPassword, ctx.user)) return fail(ctx.res, 400, 'Old password is incorrect')
-  await userModel.changePassword(ctx.user.id, hashPassword(newPassword))
-  return ok(ctx.res, { success: true })
+  const { currentPassword, newPassword } = ctx.body;
+  if (!currentPassword || !newPassword)
+    return fail(ctx.res, 400, "Current and new password are required");
+
+  const userInstance = await UserService.findById(ctx.user.id);
+  const user = userInstance.toJSON();
+  if (
+    !verifyPassword(currentPassword, {
+      passwordHash: user.password_hash,
+      salt: user.salt,
+    })
+  ) {
+    return fail(ctx.res, 400, "Current password is incorrect");
+  }
+
+  const hashed = hashPassword(newPassword);
+  await User.update(
+    { password_hash: hashed.passwordHash, salt: hashed.salt },
+    { where: { id: ctx.user.id } },
+  );
+
+  return ok(ctx.res, {
+    success: true,
+    message: "Password changed successfully",
+  });
 }
 
 const changePasswordWithOtp = async (ctx) => {
-  ctx.body = { email: ctx.body.email, otp: ctx.body.otp, password: ctx.body.newPassword }
-  return resetPassword(ctx)
+  const { email, otp, newPassword } = ctx.body;
+  if (!email || !otp || !newPassword)
+    return fail(ctx.res, 400, "Email, OTP and new password are required");
+
+  const record = await PasswordOtp.findOne({
+    where: {
+      email: cleanEmail(email),
+      used_at: null,
+      expires_at: { [Op.gt]: new Date() },
+    },
+    order: [["created_at", "DESC"]],
+  });
+
+  if (!record) return fail(ctx.res, 400, "Invalid or expired OTP");
+
+  const otpHash = crypto
+    .pbkdf2Sync(otp, record.salt, 1000, 64, "sha512")
+    .toString("hex");
+  if (otpHash !== record.otp_hash) return fail(ctx.res, 400, "Invalid OTP");
+
+  const hashed = hashPassword(newPassword);
+  await User.update(
+    { password_hash: hashed.passwordHash, salt: hashed.salt },
+    { where: { email: cleanEmail(email) } },
+  );
+
+  await PasswordOtp.update(
+    { used_at: new Date() },
+    { where: { id: record.id } },
+  );
+  return ok(ctx.res, {
+    success: true,
+    message: "Password changed successfully",
+  });
 }
 
 module.exports = {

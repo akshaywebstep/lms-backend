@@ -1,10 +1,11 @@
 'use strict'
 
-const env = require('../config/db').env
+const { env } = require('../config/db')
 const { readToken } = require('../services/token')
 const { fail } = require('../utils/response')
-const userModel = require('../models/user.model')
-const sessionModel = require('../models/session.model')
+const UserService = require('../services/user.service')
+const { Session, RevokedToken } = require('../models')
+const { Op } = require('sequelize')
 
 /**
  * Universal Auth Middleware supporting both Express (req, res, next) and Context (ctx, next)
@@ -27,10 +28,16 @@ const auth = (roles = []) => async (reqOrCtx, resOrNext, nextFn) => {
   }
 
   if (payload.type !== 'access') return fail(res, 401, 'Use an access token')
-  if (await sessionModel.isRevoked(payload.jti)) return fail(res, 401, 'Token has been invalidated')
 
-  const user = await userModel.findById(payload.sub)
-  if (!user || user.status !== 'active') return fail(res, 401, 'User is not active')
+  // Check if token is revoked via RevokedToken table
+  const revoked = await RevokedToken.findOne({ where: { token_id: payload.jti } })
+  if (revoked) return fail(res, 401, 'Token has been invalidated')
+
+  const userInstance = await UserService.findById(payload.sub)
+  if (!userInstance) return fail(res, 401, 'User not found')
+
+  const user = userInstance.toJSON()
+  if (user.status !== 'active') return fail(res, 401, 'User is not active')
   if (roles.length && !roles.includes(user.role)) return fail(res, 403, 'You are not allowed to access this resource')
 
   if (isExpress) {

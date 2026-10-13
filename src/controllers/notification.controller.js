@@ -1,28 +1,33 @@
-const { created, ok, fail } = require('../utils/response')
-const notificationModel = require('../models/notification.model')
+'use strict'
 
-const list = async (ctx) => ok(ctx.res, { notifications: await notificationModel.listForUser(ctx.user) })
+const NotificationService = require('../services/notification/notification.service')
+const { ok, created, fail } = require('../utils/response')
+
+const list = async (ctx) => {
+  const notifications = await NotificationService.listForUser(ctx.user.id, ctx.user.role)
+  return ok(ctx.res, { notifications })
+}
 
 const create = async (ctx) => {
-  const { recipientId, recipientRole, title, message, type } = ctx.body
-  if (!title || !message) return fail(ctx.res, 400, 'Title and message are required')
-  if (ctx.user.role !== 'superadmin' && recipientRole) return fail(ctx.res, 403, 'Only admin can send role-wide notifications')
-  const notification = await notificationModel.create({
-    recipientId,
-    recipientRole,
-    title,
-    message,
-    type,
+  if (!ctx.body.title || !ctx.body.message) return fail(ctx.res, 400, 'Title and message are required')
+  const notification = await NotificationService.create({
     senderId: ctx.user.id,
+    type: ctx.body.type,
+    recipientId: ctx.body.recipientId,
+    recipientRole: ctx.body.recipientRole,
+    title: ctx.body.title,
+    message: ctx.body.message,
   })
   return created(ctx.res, { notification })
 }
 
 const markRead = async (ctx) => {
-  const notification = await notificationModel.markRead(ctx.params.id, ctx.user)
-  if (!notification) return fail(ctx.res, 404, 'Notification not found')
-  if (notification === false) return fail(ctx.res, 403, 'Cannot update this notification')
-  return ok(ctx.res, { notification })
+  const result = await NotificationService.markAsRead(ctx.params.id, ctx.user.id)
+  return ok(ctx.res, result)
 }
 
-module.exports = { list, create, markRead }
+module.exports = {
+  list,
+  create,
+  markRead,
+}

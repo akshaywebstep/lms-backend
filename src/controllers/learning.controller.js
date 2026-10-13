@@ -1,34 +1,38 @@
-const { ok, created, fail } = require('../utils/response')
-const learningModel = require('../models/learning.model')
-const quizModel = require('../models/quiz.model')
-const assignmentModel = require('../models/assignment.model')
-const resourceModel = require('../models/resource.model')
+'use strict'
 
+const { ok, created, fail } = require('../utils/response')
+const LearningService = require('../services/learning/learning.service')
+const AssessmentService = require('../services/learning/assessment.service')
+const { Certificate, Upload, PlatformSetting } = require('../models')
+const { makeId } = require('../utils/id')
+
+// Lessons
 const listCoachLessons = async (ctx) =>
-  ok(ctx.res, { lessons: await learningModel.listLessonsForCoach(ctx.user.id, { courseId: ctx.query.get('courseId') }) })
+  ok(ctx.res, { lessons: await LearningService.listLessonsForCoach(ctx.user.id, { courseId: ctx.query.get('courseId') }) })
 
 const createCoachLesson = async (ctx) => {
   if (!ctx.body.courseId || !ctx.body.title) return fail(ctx.res, 400, 'Course and lesson title are required')
-  const lesson = await learningModel.createLesson(ctx.user.id, ctx.body)
+  const lesson = await LearningService.createLesson(ctx.user.id, ctx.body)
   if (!lesson) return fail(ctx.res, 404, 'Course not found for this coach')
   return created(ctx.res, { lesson })
 }
 
 const updateCoachLesson = async (ctx) => {
-  const lesson = await learningModel.updateLesson(ctx.params.id, ctx.user.id, ctx.body)
+  const lesson = await LearningService.updateLesson(ctx.params.id, ctx.user.id, ctx.body)
   if (!lesson) return fail(ctx.res, 404, 'Lesson not found')
   return ok(ctx.res, { lesson })
 }
 
 const deleteCoachLesson = async (ctx) => {
-  const removed = await learningModel.removeLesson(ctx.params.id, ctx.user.id)
+  const removed = await LearningService.removeLesson(ctx.params.id, ctx.user.id)
   if (!removed) return fail(ctx.res, 404, 'Lesson not found')
   return ok(ctx.res, { success: true })
 }
 
+// Topics
 const listCoachTopics = async (ctx) =>
   ok(ctx.res, {
-    topics: await learningModel.listTopicsForCoach(ctx.user.id, {
+    topics: await LearningService.listTopicsForCoach(ctx.user.id, {
       lessonId: ctx.query.get('lessonId'),
       courseId: ctx.query.get('courseId'),
     }),
@@ -36,130 +40,153 @@ const listCoachTopics = async (ctx) =>
 
 const createCoachTopic = async (ctx) => {
   if (!ctx.body.lessonId || !(ctx.body.title || ctx.body.name)) return fail(ctx.res, 400, 'Lesson and topic title are required')
-  const topic = await learningModel.createTopic(ctx.user.id, ctx.body)
+  const topic = await LearningService.createTopic(ctx.user.id, ctx.body)
   if (!topic) return fail(ctx.res, 404, 'Lesson not found for this coach')
   return created(ctx.res, { topic })
 }
 
 const updateCoachTopic = async (ctx) => {
-  const topic = await learningModel.updateTopic(ctx.params.id, ctx.user.id, ctx.body)
+  const topic = await LearningService.updateTopic(ctx.params.id, ctx.user.id, ctx.body)
   if (!topic) return fail(ctx.res, 404, 'Topic not found')
   return ok(ctx.res, { topic })
 }
 
 const deleteCoachTopic = async (ctx) => {
-  const removed = await learningModel.removeTopic(ctx.params.id, ctx.user.id)
+  const removed = await LearningService.removeTopic(ctx.params.id, ctx.user.id)
   if (!removed) return fail(ctx.res, 404, 'Topic not found')
   return ok(ctx.res, { success: true })
 }
 
+// Quizzes
 const listCoachQuizzes = async (ctx) =>
-  ok(ctx.res, { quizzes: await quizModel.listForCoach(ctx.user.id, { courseId: ctx.query.get('courseId') }) })
+  ok(ctx.res, { quizzes: await AssessmentService.listQuizzesForCoach(ctx.user.id, { courseId: ctx.query.get('courseId') }) })
 
 const getCoachQuiz = async (ctx) => {
-  const quiz = await quizModel.findForCoach(ctx.params.id, ctx.user.id)
+  const quiz = await AssessmentService.getQuizDetail(ctx.params.id)
   if (!quiz) return fail(ctx.res, 404, 'Quiz not found')
   return ok(ctx.res, { quiz })
 }
 
 const createCoachQuiz = async (ctx) => {
-  if (!ctx.body.courseId || !ctx.body.title) return fail(ctx.res, 400, 'Course and quiz title are required')
-  const quiz = await quizModel.create(ctx.user.id, ctx.body)
-  if (!quiz) return fail(ctx.res, 404, 'Course not found for this coach')
+  if (!ctx.body.courseId || !ctx.body.title) return fail(ctx.res, 400, 'Course ID and quiz title are required')
+  const quiz = await AssessmentService.createQuiz(ctx.user.id, ctx.body)
+  if (!quiz) return fail(ctx.res, 404, 'Course not found')
   return created(ctx.res, { quiz })
 }
 
 const updateCoachQuiz = async (ctx) => {
-  const quiz = await quizModel.update(ctx.params.id, ctx.user.id, ctx.body)
+  const quiz = await AssessmentService.updateQuiz(ctx.params.id, ctx.user.id, ctx.body)
   if (!quiz) return fail(ctx.res, 404, 'Quiz not found')
   return ok(ctx.res, { quiz })
 }
 
 const deleteCoachQuiz = async (ctx) => {
-  const removed = await quizModel.remove(ctx.params.id, ctx.user.id)
+  const removed = await AssessmentService.removeQuiz(ctx.params.id, ctx.user.id)
   if (!removed) return fail(ctx.res, 404, 'Quiz not found')
   return ok(ctx.res, { success: true })
 }
 
-const listCoachMaterials = async (ctx) => ok(ctx.res, { materials: await resourceModel.listMaterials(ctx.user.id) })
+// Materials
+const listCoachMaterials = async (ctx) => {
+  const uploads = await Upload.findAll({
+    where: { owner_id: ctx.user.id },
+    order: [['created_at', 'DESC']],
+  })
+  return ok(ctx.res, { materials: uploads, uploads })
+}
 
 const createCoachMaterial = async (ctx) => {
-  const material = await resourceModel.createMaterial(ctx.user.id, ctx.body, ctx.body.type || 'document')
-  return created(ctx.res, { material })
+  const upload = await Upload.create({
+    id: makeId('mat'),
+    owner_id: ctx.user.id,
+    file_type: ctx.body.fileType || 'document',
+    original_name: ctx.body.originalName || 'file',
+    file_url: ctx.body.fileUrl,
+    mime_type: ctx.body.mimeType || 'application/octet-stream',
+    size_bytes: ctx.body.sizeBytes || 0,
+  })
+  return created(ctx.res, { material: upload, upload })
 }
 
 const deleteCoachMaterial = async (ctx) => {
-  const removed = await resourceModel.removeMaterial(ctx.user.id, ctx.params.id)
-  if (!removed) return fail(ctx.res, 404, 'Material not found')
+  await Upload.destroy({ where: { id: ctx.params.id, owner_id: ctx.user.id } })
   return ok(ctx.res, { success: true })
 }
 
-const listPricingPlans = async (ctx) => ok(ctx.res, { plans: await resourceModel.listPricingPlans(ctx.user.id) })
+// Pricing Plans
+const listPricingPlans = async (ctx) => {
+  const setting = await PlatformSetting.findByPk(`pricing_plans:${ctx.user.id}`)
+  return ok(ctx.res, { plans: setting ? setting.setting_value : [] })
+}
 
 const createPricingPlan = async (ctx) => {
-  if (!ctx.body.name) return fail(ctx.res, 400, 'Plan name is required')
-  const plan = await resourceModel.createPricingPlan(ctx.user.id, ctx.body)
-  if (!plan) return fail(ctx.res, 404, 'Course not found for this coach')
-  return created(ctx.res, { plan })
+  const settingKey = `pricing_plans:${ctx.user.id}`
+  const setting = await PlatformSetting.findByPk(settingKey)
+  const current = (setting ? setting.setting_value : []) || []
+  const newPlan = { id: makeId('plan'), ...ctx.body }
+  current.push(newPlan)
+  await PlatformSetting.upsert({ setting_key: settingKey, setting_value: current })
+  return created(ctx.res, { plan: newPlan })
 }
 
 const updatePricingPlan = async (ctx) => {
-  const plan = await resourceModel.updatePricingPlan(ctx.user.id, ctx.params.id, ctx.body)
-  if (!plan) return fail(ctx.res, 404, 'Pricing plan not found')
-  return ok(ctx.res, { plan })
+  const settingKey = `pricing_plans:${ctx.user.id}`
+  const setting = await PlatformSetting.findByPk(settingKey)
+  const current = (setting ? setting.setting_value : []) || []
+  const idx = current.findIndex((p) => p.id === ctx.params.id)
+  if (idx === -1) return fail(ctx.res, 404, 'Plan not found')
+  current[idx] = { ...current[idx], ...ctx.body }
+  await PlatformSetting.upsert({ setting_key: settingKey, setting_value: current })
+  return ok(ctx.res, { plan: current[idx] })
 }
 
 const deletePricingPlan = async (ctx) => {
-  const removed = await resourceModel.removePricingPlan(ctx.user.id, ctx.params.id)
-  if (!removed) return fail(ctx.res, 404, 'Pricing plan not found')
+  const settingKey = `pricing_plans:${ctx.user.id}`
+  const setting = await PlatformSetting.findByPk(settingKey)
+  const current = (setting ? setting.setting_value : []) || []
+  const filtered = current.filter((p) => p.id !== ctx.params.id)
+  await PlatformSetting.upsert({ setting_key: settingKey, setting_value: filtered })
   return ok(ctx.res, { success: true })
 }
 
+// Student Learning
 const studentCourseContent = async (ctx) => {
-  const content = await learningModel.listLessonsForStudentCourse(ctx.user.id, ctx.params.courseId)
-  if (!content) return fail(ctx.res, 404, 'Enrollment not found')
+  const content = await LearningService.getStudentCourseContent(ctx.user.id, ctx.params.courseId)
+  if (!content) return fail(ctx.res, 404, 'Course not found')
   return ok(ctx.res, content)
 }
 
 const updateStudentLessonProgress = async (ctx) => {
-  try {
-    const progress = await learningModel.updateLessonProgress(ctx.user.id, ctx.params.id, ctx.body)
-    if (!progress) return fail(ctx.res, 404, 'Lesson not found in your enrolled courses')
-    return ok(ctx.res, { progress })
-  } catch (error) {
-    if (error.message === 'Lesson is locked') return fail(ctx.res, 403, error.message)
-    throw error
-  }
+  const result = await LearningService.updateStudentLessonProgress(ctx.user.id, ctx.params.id, ctx.body)
+  if (!result) return fail(ctx.res, 404, 'Lesson or enrollment not found')
+  return ok(ctx.res, result)
 }
 
-const listStudentQuizzes = async (ctx) => ok(ctx.res, { quizzes: await quizModel.listForStudent(ctx.user.id) })
+const listStudentQuizzes = async (ctx) =>
+  ok(ctx.res, { quizzes: await AssessmentService.listStudentQuizzes(ctx.user.id) })
 
 const attemptStudentQuiz = async (ctx) => {
-  try {
-    const attempt = await quizModel.attempt(ctx.user.id, ctx.params.id, ctx.body.answers || {})
-    if (!attempt) return fail(ctx.res, 404, 'Quiz not found in your enrolled courses')
-    return created(ctx.res, { attempt })
-  } catch (error) {
-    if (error.message === 'Quiz is locked') return fail(ctx.res, 403, error.message)
-    throw error
-  }
+  const attempt = await AssessmentService.attemptStudentQuiz(ctx.user.id, ctx.params.id, ctx.body)
+  if (!attempt) return fail(ctx.res, 404, 'Quiz or enrollment not found')
+  return ok(ctx.res, { attempt })
 }
 
-const listStudentAssignments = async (ctx) => ok(ctx.res, { assignments: await assignmentModel.listForStudent(ctx.user.id) })
+const listStudentAssignments = async (ctx) =>
+  ok(ctx.res, { assignments: await AssessmentService.listStudentAssignments(ctx.user.id) })
 
 const submitStudentAssignment = async (ctx) => {
-  try {
-    const submission = await assignmentModel.submitForStudent(ctx.user.id, ctx.params.id, ctx.body)
-    if (!submission) return fail(ctx.res, 404, 'Assignment not found in your enrolled courses')
-    return created(ctx.res, { submission })
-  } catch (error) {
-    if (error.message === 'Assignment is locked') return fail(ctx.res, 403, error.message)
-    throw error
-  }
+  const submission = await AssessmentService.submitStudentAssignment(ctx.user.id, ctx.params.id, ctx.body)
+  if (!submission) return fail(ctx.res, 404, 'Assignment or enrollment not found')
+  return created(ctx.res, { submission })
 }
 
-const listStudentCertificates = async (ctx) =>
-  ok(ctx.res, { certificates: await resourceModel.autoIssueCertificates(ctx.user.id) })
+const listStudentCertificates = async (ctx) => {
+  const certs = await Certificate.findAll({
+    where: { student_id: ctx.user.id },
+    order: [['issued_at', 'DESC']],
+  })
+  return ok(ctx.res, { certificates: certs })
+}
 
 module.exports = {
   listCoachLessons,

@@ -1,5 +1,7 @@
+'use strict'
+
 const nodemailer = require('nodemailer')
-const emailConfigModel = require('../models/emailConfig.model')
+const { EmailConfig } = require('../models')
 
 // Cache one transporter per smtp_host+username combo so we don't reconnect on every email.
 const transporterCache = new Map()
@@ -53,13 +55,10 @@ const parseRecipients = (raw) => {
   return text.split(/[,;]/).map((item) => item.trim()).filter(Boolean)
 }
 
-// module + action look up a row in email_configs (e.g. module='student', action='course-purchased').
-// vars fill {{placeholders}} in the subject/html_template columns.
-// `to` is optional — if omitted, the recipient stored on the config row's `to` column is used
-// (useful for fixed-recipient mails like admin notifications). `cc`/`bcc` passed in are merged
-// with whatever is already saved on the config row.
 const sendMail = async ({ module, action, coachId, to, cc, bcc, vars = {} }) => {
-  const config = await emailConfigModel.findConfig(module, action, coachId)
+  const where = { module, action }
+  if (coachId) where.coach_id = coachId
+  const config = await EmailConfig.findOne({ where })
   if (!config) {
     console.log(`[mail:dev] no email_configs row for module="${module}" action="${action}"`)
     return { sent: false, reason: `No email_configs row for module="${module}" action="${action}"` }
@@ -98,7 +97,7 @@ const sendMail = async ({ module, action, coachId, to, cc, bcc, vars = {} }) => 
       subject,
       html,
     })
-    console.log(`[mail:sent] to=${toList.join(',')} subject="${subject}" messageId=${info.messageId}`)  
+    console.log(`[mail:sent] to=${toList.join(',')} subject="${subject}" messageId=${info.messageId}`)
     return { sent: true, messageId: info.messageId }
   } catch (error) {
     console.log(`[mail:error] to=${toList.join(',')} subject="${subject}" ${error.message}`)
