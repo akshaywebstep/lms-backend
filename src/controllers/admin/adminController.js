@@ -1,87 +1,170 @@
 'use strict'
 
 const AdminService = require('../../services/admin/admin.service')
-const { ok, created, fail } = require('../../utils/response')
 
-const stats = async (ctx) => {
-  const data = await AdminService.getStats()
-  return ok(ctx.res, data)
+const PANEL = 'admin'
+
+/**
+ * 1. Get Dashboard Stats
+ * GET /api/admin/stats
+ */
+exports.stats = async (req, res) => {
+  try {
+    const result = await AdminService.getDashboardStats()
+    return res.status(result.status ? 200 : 500).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in stats controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
 
-const coaches = async (ctx) => {
-  const data = await AdminService.listCoaches()
-  return ok(ctx.res, { coaches: data })
+/**
+ * 2. Get Coaches List
+ * GET /api/admin/coaches
+ */
+exports.coaches = async (req, res) => {
+  try {
+    const result = await AdminService.getAllCoaches()
+    return res.status(result.status ? 200 : 500).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in coaches controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
 
-const createCoach = async (ctx) => {
-  const body = ctx.body || {}
-  if (!body.name || !body.email) return fail(ctx.res, 400, 'Name and email are required')
-  const coach = await AdminService.createCoach(body)
-  return created(ctx.res, { coach })
+/**
+ * 3. Create Coach
+ * POST /api/admin/coaches
+ */
+exports.createCoach = async (req, res) => {
+  try {
+    const body = req.body || {}
+    if (!body.name || !body.email) {
+      return res.status(400).json({ success: false, message: 'Name and email are required' })
+    }
+    const result = await AdminService.createCoach(body)
+    return res.status(result.status ? 201 : 400).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in createCoach controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
 
-const coachDetail = async (ctx) => {
-  const data = await AdminService.getCoachDetail(ctx.params.id)
-  if (!data) return fail(ctx.res, 404, 'Coach not found')
-  return ok(ctx.res, data)
+/**
+ * 4. Get Coach Detail
+ * GET /api/admin/coaches/:id
+ */
+exports.coachDetail = async (req, res) => {
+  try {
+    const { id } = req.params
+    const result = await AdminService.getCoachById(id)
+    return res.status(result.status ? 200 : 404).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in coachDetail controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
 
-const updateCoachStatus = async (ctx) => {
-  const status = ctx.body.status
-  if (!['active', 'blocked'].includes(status)) return fail(ctx.res, 400, 'Invalid status')
-  const data = await AdminService.updateCoachStatus(ctx.params.id, status)
-  return ok(ctx.res, data)
+/**
+ * 5. Update Coach Status
+ * PATCH /api/admin/coaches/:id/status
+ */
+exports.updateCoachStatus = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { status } = req.body
+    if (!['active', 'blocked'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status' })
+    }
+    const result = await AdminService.updateCoachStatus(id, status)
+    return res.status(result.status ? 200 : 400).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in updateCoachStatus controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
 
-const students = async (ctx) => {
-  const data = await AdminService.listStudents()
-  return ok(ctx.res, { students: data })
+/**
+ * 6. Get Students List
+ * GET /api/admin/students
+ */
+exports.students = async (req, res) => {
+  try {
+    const result = await AdminService.getAllStudents()
+    return res.status(result.status ? 200 : 500).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in students controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
 
-const studentDetail = async (ctx) => {
-  const data = await AdminService.getStudentDetail(ctx.params.id)
-  if (!data) return fail(ctx.res, 404, 'Student not found')
-  return ok(ctx.res, data)
+/**
+ * 7. Get Student Detail
+ * GET /api/admin/students/:id
+ */
+exports.studentDetail = async (req, res) => {
+  try {
+    const { id } = req.params
+    const result = await AdminService.getStudentById(id)
+    return res.status(result.status ? 200 : 404).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in studentDetail controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
 
-const updateStudentStatus = async (ctx) => {
-  const status = ctx.body.status
-  if (!['active', 'blocked'].includes(status)) return fail(ctx.res, 400, 'Invalid status')
-  const data = await AdminService.updateStudentStatus(ctx.params.id, status)
-  return ok(ctx.res, data)
+/**
+ * 8. Update Student Status
+ * PATCH /api/admin/students/:id/status
+ */
+exports.updateStudentStatus = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { status } = req.body
+    if (!['active', 'blocked'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status' })
+    }
+    const result = await AdminService.updateStudentStatus(id, status)
+    return res.status(result.status ? 200 : 400).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in updateStudentStatus controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
 
-const payments = async (ctx) => {
-  const data = await AdminService.listPayments()
-  return ok(ctx.res, { payments: data })
+/**
+ * 9. Get Payments List
+ * GET /api/admin/payments
+ */
+exports.payments = async (req, res) => {
+  try {
+    const result = await AdminService.getAllPayments()
+    return res.status(result.status ? 200 : 500).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in payments controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
 
-const reports = async (ctx) => {
-  const data = await AdminService.getReports()
-  return ok(ctx.res, data)
+/**
+ * 10. Platform Settings
+ */
+exports.getPlatformSettings = async (req, res) => {
+  try {
+    const result = await AdminService.getPlatformSettings()
+    return res.status(result.status ? 200 : 500).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in getPlatformSettings controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
 
-const getPlatformSettings = async (ctx) => {
-  const data = await AdminService.getPlatformSettings()
-  return ok(ctx.res, data)
-}
-
-const updatePlatformSettings = async (ctx) => {
-  const data = await AdminService.updatePlatformSettings(ctx.body)
-  return ok(ctx.res, data)
-}
-
-module.exports = {
-  stats,
-  coaches,
-  createCoach,
-  coachDetail,
-  updateCoachStatus,
-  students,
-  studentDetail,
-  updateStudentStatus,
-  payments,
-  reports,
-  getPlatformSettings,
-  updatePlatformSettings,
+exports.updatePlatformSettings = async (req, res) => {
+  try {
+    const result = await AdminService.updatePlatformSettings(req.body)
+    return res.status(result.status ? 200 : 500).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in updatePlatformSettings controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }

@@ -1,7 +1,7 @@
 'use strict'
 
 const { DataTypes } = require('sequelize')
-const { sequelize } = require('../../config/db')
+const { sequelize } = require('../config/db')
 const { Course } = require('./Course.model')
 
 const CourseRequirement = sequelize.define('CourseRequirement', {

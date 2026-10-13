@@ -1,21 +1,48 @@
 'use strict'
 
 const CoachService = require('../../services/coach/coach.service')
-const { ok } = require('../../utils/response')
 
-const stats = async (ctx) => {
-  const data = await CoachService.getStats(ctx.user.id)
-  return ok(ctx.res, data)
+/**
+ * 1. Get Coach Dashboard Statistics
+ * GET /api/coach/stats
+ */
+exports.stats = async (req, res) => {
+  try {
+    const coachId = req.user?.id
+    const result = await CoachService.getCoachStats(coachId)
+    return res.status(result.status ? 200 : 500).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in stats controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
 
-const students = async (ctx) => {
-  const data = await CoachService.listStudents(ctx.user.id)
-  return ok(ctx.res, { students: data })
+/**
+ * 2. Get Coach Students List
+ * GET /api/coach/students
+ */
+exports.students = async (req, res) => {
+  try {
+    const coachId = req.user?.id
+    const result = await CoachService.getCoachStudents(coachId)
+    return res.status(result.status ? 200 : 500).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in students controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
 
-const earnings = async (ctx) => {
-  const data = await CoachService.getEarnings(ctx.user.id)
-  return ok(ctx.res, data)
+/**
+ * 3. Get Coach Earnings Overview
+ * GET /api/coach/earnings
+ */
+exports.earnings = async (req, res) => {
+  try {
+    const coachId = req.user?.id
+    const result = await CoachService.getCoachEarnings(coachId)
+    return res.status(result.status ? 200 : 500).json(result.status ? result.data : result)
+  } catch (error) {
+    console.error('❌ Error in earnings controller:', error)
+    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+  }
 }
-
-module.exports = { stats, students, earnings }
