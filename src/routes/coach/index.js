@@ -3,7 +3,7 @@
 const express = require('express')
 const router = express.Router()
 
-const coachController = require('../../controllers/coach.controller')
+const coachController = require('../../controllers/coach/coachController')
 const courseController = require('../../controllers/course.controller')
 const assignmentController = require('../../controllers/assignment.controller')
 const learningController = require('../../controllers/learning.controller')

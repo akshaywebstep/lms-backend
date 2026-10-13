@@ -3,7 +3,7 @@
 const express = require('express')
 const router = express.Router()
 
-const adminController = require('../../controllers/admin.controller')
+const adminController = require('../../controllers/admin/adminController')
 const courseController = require('../../controllers/course.controller')
 const emailConfigController = require('../../controllers/emailConfig.controller')
 const masterDataController = require('../../controllers/masterData.controller')
@@ -12,7 +12,6 @@ const { ROLES } = require('../../config/constants')
 
 const adminOnly = auth([ROLES.ADMIN])
 
-// Wrap existing handlers uniformly for express
 const h = (fn) => (req, res, next) => {
   const searchParams = new URLSearchParams()
   for (const [k, v] of Object.entries(req.query || {})) {
