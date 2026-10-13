@@ -1,32 +1,21 @@
 'use strict'
 
-const fs = require('fs')
-const path = require('path')
-const http = require('http')
 const express = require('express')
 const cors = require('cors')
+const bodyParser = require('body-parser')
+const path = require('path')
+const fs = require('fs')
 
-const { env, ping } = require('./config/db')
-const { registerRoutes } = require('./routes')
+const { env, connectWithRetry, ping } = require('./config/db')
 const { publicUploadPath } = require('./services/upload')
 const { fail } = require('./utils/response')
 
 const app = express()
+const port = process.env.PORT || env.port || 5000
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true)
-    if (env.allowedOrigins.includes(origin)) return callback(null, true)
-    try {
-      const parsed = new URL(origin)
-      if (['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)) {
-        return callback(null, true)
-      }
-    } catch {}
-    return callback(null, true) // Permissive fallback for custom domain/demo links
-  },
+  origin: (origin, callback) => callback(null, true),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -40,7 +29,7 @@ app.use((req, res, next) => {
   next()
 })
 
-// Static file uploads server
+// Static Uploads Delivery
 const sendUpload = (req, res, pathname) => {
   const fullPath = publicUploadPath(pathname)
   if (!fullPath || !fs.existsSync(fullPath)) return false
@@ -81,8 +70,7 @@ app.use('/uploads', (req, res) => {
   }
 })
 
-// ─── Multipart Form-Data & Body Parsers ───────────────────────────────────────
-
+// ─── Multipart Form-Data Parser ───────────────────────────────────────────────
 const parseMultipart = (buffer, contentType) => {
   const boundaryMatch = contentType.match(/boundary=(?:(?:"([^"]+)")|([^;]+))/i)
   if (!boundaryMatch) throw new Error('Multipart boundary missing')
@@ -130,26 +118,24 @@ const parseMultipart = (buffer, contentType) => {
   return { ...fields, files }
 }
 
-// Raw body capture for multipart, json, urlencoded
+// ─── Body Parsers (synconode standard) ─────────────────────────────────────────
 app.use(express.raw({ type: 'multipart/form-data', limit: '100mb' }))
-app.use(express.json({ limit: '50mb' }))
-app.use(express.urlencoded({ extended: true, limit: '50mb' }))
+app.use(bodyParser.json({ limit: '50mb' }))
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true, parameterLimit: 50000 }))
 
-// Format req.body uniformly
 app.use((req, res, next) => {
   const contentType = req.headers['content-type'] || ''
   if (contentType.includes('multipart/form-data') && Buffer.isBuffer(req.body)) {
     try {
       req.body = parseMultipart(req.body, contentType)
-    } catch (e) {
+    } catch {
       return fail(res, 400, 'Invalid multipart request')
     }
   }
   next()
 })
 
-// ─── Health Check Endpoint ────────────────────────────────────────────────────
-
+// ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/api/health', async (req, res) => {
   try {
     await ping()
@@ -164,107 +150,34 @@ app.get('/api/health', async (req, res) => {
   }
 })
 
-// ─── Express Router Adapter for existing route handlers ───────────────────────
+// ─── Mount Main Routes (synconode pattern) ─────────────────────────────────────
+app.use('/api', require('./routes'))
 
-const router = express.Router()
-
-const adapter = (method, pattern, handlers) => {
-  const m = method.toLowerCase()
-  const list = Array.isArray(handlers) ? handlers : [handlers]
-
-  // Express pattern support (:id works natively)
-  const expressHandlers = list.map((fn) => async (req, res, next) => {
-    // URLSearchParams shim for existing ctx.query.get('key')
-    const searchParams = new URLSearchParams()
-    for (const [k, v] of Object.entries(req.query || {})) {
-      if (Array.isArray(v)) v.forEach((val) => searchParams.append(k, val))
-      else if (v !== undefined) searchParams.set(k, String(v))
-    }
-
-    const ctx = {
-      req,
-      res,
-      params: req.params,
-      query: searchParams,
-      body: req.body,
-      user: req.user,
-      tokenPayload: req.tokenPayload,
-      env,
-    }
-
-    try {
-      // If handler takes 2 params (middleware style fn(ctx, next))
-      if (fn.length >= 2) {
-        return await fn(ctx, next)
-      }
-      return await fn(ctx)
-    } catch (err) {
-      next(err)
-    }
-  })
-
-  if (typeof router[m] === 'function') {
-    router[m](pattern, ...expressHandlers)
-  }
-}
-
-// Register all modular routes
-registerRoutes(adapter)
-app.use(router)
-
-// ─── Global 404 & Error Handling ──────────────────────────────────────────────
-
+// ─── 404 & Error Handling ─────────────────────────────────────────────────────
 app.use((req, res) => {
   fail(res, 404, `Route not found: ${req.method} ${req.path}`)
 })
 
 app.use((err, req, res, next) => {
-  console.error('[EXPRESS ERROR]', err?.stack || err)
+  console.error('[SERVER ERROR]', err?.stack || err)
   if (res.headersSent) return next(err)
-
-  if (err.code === 'ER_ACCESS_DENIED_ERROR') {
-    return fail(res, 500, 'MySQL access denied. Check DB_USER and DB_PASSWORD.')
-  }
-  if (err.code === 'ER_BAD_DB_ERROR') {
-    return fail(res, 500, 'MySQL database not found. Check DB_NAME.')
-  }
-  if (err.code === 'ECONNREFUSED') {
-    return fail(res, 500, 'MySQL connection refused. Check DB_HOST and DB_PORT.')
-  }
-
   return fail(res, 500, 'Internal server error', process.env.NODE_ENV !== 'production' ? err.message : undefined)
 })
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
-
-const startServer = () => {
-  const port = Number(process.env.PORT || env.port || 5000)
-  const server = http.createServer(app)
-
-  server.listen(port, '0.0.0.0', async () => {
-    console.log(`LMS Express backend running on port ${port}`)
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`)
-
-    try {
-      await ping()
-      console.log(`MySQL & Sequelize connected: ${env.db.database}@${env.db.host}:${env.db.port}`)
-    } catch (error) {
-      console.error('Backend started but MySQL/Sequelize connection failed:', error?.message || error)
-    }
+// ─── Start Server With Retry (synconode pattern) ──────────────────────────────
+connectWithRetry().then(() => {
+  app.listen(port, () => {
+    console.log(`🚀 LMS Server running on http://localhost:${port}`)
+    console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`)
   })
+})
 
-  return server
-}
-
-// Process-level error handling
-process.on('uncaughtException', (error) => {
-  console.error('[UNCAUGHT EXCEPTION]', error?.stack || error)
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err)
 })
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[UNHANDLED REJECTION]', reason?.stack || reason)
+  console.error('Unhandled Rejection:', reason)
 })
-
-startServer()
 
 module.exports = app
