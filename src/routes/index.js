@@ -11,6 +11,7 @@ const masterDataController = require('../controllers/masterData/masterDataContro
 const emailConfigController = require('../controllers/admin/settings/emailConfigController')
 const { Upload } = require('../models')
 const { makeId } = require('../utils/id')
+const { saveUploadedFile, typeFromMime } = require('../services/upload')
 const { auth } = require('../middleware/auth')
 const { ROLES } = require('../config/constants')
 const { created, ok, fail } = require('../utils/response')
@@ -70,16 +71,37 @@ router.post('/email-templates/:id/test-send', staffOnly, h(emailConfigController
 // ─── Upload Routes ────────────────────────────────────────────────────────────
 const createUpload = (fileType) => async (req, res, next) => {
   try {
+    const file = req.body?.files?.[0]
+    const uploaded = file ? saveUploadedFile(file) : null
+    const inferredType = uploaded ? uploaded.type : fileType || typeFromMime(req.body?.mimeType || '')
+    const originalName = uploaded?.originalName || req.body?.originalName || `${fileType}_file`
+    const backendBase = (process.env.BACKEND_PUBLIC_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/$/, '')
+    const fileUrl = uploaded ? `${backendBase}${uploaded.url}` : (req.body?.fileUrl || req.body?.url || '')
+    const mimeType = uploaded?.mimeType || req.body?.mimeType || 'application/octet-stream'
+    const sizeBytes = uploaded?.sizeBytes || req.body?.sizeBytes || 0
+
     const upload = await Upload.create({
       id: makeId('up'),
       owner_id: req.user.id,
-      file_type: fileType,
-      original_name: req.body.originalName || `${fileType}_file`,
-      file_url: req.body.fileUrl || req.body.url || '',
-      mime_type: req.body.mimeType || 'application/octet-stream',
-      size_bytes: req.body.sizeBytes || 0,
+      file_type: inferredType,
+      original_name: originalName,
+      file_url: fileUrl,
+      mime_type: mimeType,
+      size_bytes: sizeBytes,
     })
-    return created(res, { upload, material: upload })
+
+    const payload = {
+      id: upload.id,
+      ownerId: upload.owner_id,
+      type: upload.file_type,
+      name: upload.original_name,
+      url: fileUrl,
+      fileUrl: fileUrl,
+      mimeType: upload.mime_type,
+      sizeBytes: upload.size_bytes,
+      createdAt: upload.createdAt,
+    }
+    return created(res, { upload: payload, material: payload, url: fileUrl })
   } catch (err) {
     next(err)
   }

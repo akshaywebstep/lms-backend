@@ -30,38 +30,80 @@ app.use((req, res, next) => {
 })
 
 // Static Uploads Delivery
+const escapeXml = (str = '') =>
+  String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+
 const sendUpload = (req, res, pathname) => {
   const fullPath = publicUploadPath(pathname)
-  if (!fullPath || !fs.existsSync(fullPath)) return false
+  if (fullPath && fs.existsSync(fullPath)) {
+    const ext = path.extname(fullPath).toLowerCase()
+    const types = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
+      '.pdf': 'application/pdf',
+      '.mp4': 'video/mp4',
+      '.webm': 'video/webm',
+      '.ogg': 'video/ogg',
+      '.ogv': 'video/ogg',
+      '.mov': 'video/quicktime',
+      '.zip': 'application/zip',
+      '.html': 'text/html; charset=utf-8',
+    }
 
-  const ext = path.extname(fullPath).toLowerCase()
-  const types = {
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
-    '.pdf': 'application/pdf',
-    '.mp4': 'video/mp4',
-    '.webm': 'video/webm',
-    '.ogg': 'video/ogg',
-    '.ogv': 'video/ogg',
-    '.mov': 'video/quicktime',
-    '.zip': 'application/zip',
-    '.html': 'text/html; charset=utf-8',
+    res.setHeader('Content-Type', types[ext] || 'application/octet-stream')
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+
+    if (ext === '.html' || ext === '.svg') {
+      res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+    }
+
+    fs.createReadStream(fullPath).pipe(res)
+    return true
   }
 
-  res.setHeader('Content-Type', types[ext] || 'application/octet-stream')
-  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
-  res.setHeader('X-Content-Type-Options', 'nosniff')
+  // Graceful fallback for missing image requests (prevents broken 404 image icons)
+  const filename = path.basename(pathname)
+  const ext = path.extname(filename).toLowerCase()
+  const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.jfif', '.avif'].includes(ext)
 
-  if (ext === '.html' || ext === '.svg') {
-    res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+  if (isImage) {
+    const cleanLabel = decodeURIComponent(filename)
+      .replace(/^file_[a-z0-9_-]+-/i, '')
+      .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/[-_]+/g, ' ')
+      .trim() || 'LearnFlow Media'
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+      <defs>
+        <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#4f46e5" />
+          <stop offset="100%" stop-color="#06b6d4" />
+        </linearGradient>
+      </defs>
+      <rect width="800" height="450" fill="url(#g)" />
+      <circle cx="400" cy="180" r="56" fill="rgba(255,255,255,0.18)" />
+      <polygon points="388,155 424,180 388,205" fill="#ffffff" />
+      <text x="400" y="275" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="26" font-weight="700" fill="#ffffff" text-anchor="middle">${escapeXml(cleanLabel)}</text>
+      <text x="400" y="315" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="rgba(255,255,255,0.8)" text-anchor="middle">LEARNFLOW LMS</text>
+    </svg>`
+
+    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8')
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    res.status(200).send(svg)
+    return true
   }
 
-  fs.createReadStream(fullPath).pipe(res)
-  return true
+  return false
 }
 
 app.use('/uploads', (req, res) => {
