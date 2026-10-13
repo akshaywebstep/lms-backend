@@ -253,15 +253,35 @@ class LearningService {
       progressMap[p.lesson_id] = p.status
     })
 
+    const enrolledDate = enrollment ? new Date(enrollment.enrolled_at || enrollment.created_at) : null
+    const nowTime = Date.now()
+
     const plain = course.toJSON()
-    plain.lessons = (plain.lessons || []).map((l) => ({
-      ...l,
-      progressStatus: progressMap[l.id] || 'not_started',
-      isLocked: !enrollment && !l.is_preview,
-    }))
+    plain.lessons = (plain.lessons || []).map((l) => {
+      let isLocked = !enrollment && !l.is_preview
+      let unlocksAt = null
+
+      if (enrollment && Number(l.drip_days) > 0 && enrolledDate) {
+        const unlockMs = enrolledDate.getTime() + (Number(l.drip_days) * 24 * 60 * 60 * 1000)
+        unlocksAt = new Date(unlockMs)
+        if (nowTime < unlockMs) {
+          isLocked = true
+        }
+      }
+
+      return {
+        ...l,
+        dripDays: l.drip_days,
+        unlocksAt,
+        isLocked,
+        progressStatus: progressMap[l.id] || 'not_started',
+        progress: { status: progressMap[l.id] || 'not_started' },
+      }
+    })
 
     return {
       course: plain,
+      lessons: plain.lessons,
       enrollment: enrollment ? enrollment.toJSON() : null,
       isEnrolled: Boolean(enrollment),
     }
@@ -275,6 +295,17 @@ class LearningService {
       where: { student_id: studentId, course_id: lesson.course_id },
     })
     if (!enrollment) return null
+
+    // Enforce drip days lock
+    if (Number(lesson.drip_days) > 0) {
+      const enrolledDate = new Date(enrollment.enrolled_at || enrollment.created_at)
+      const unlockMs = enrolledDate.getTime() + (Number(lesson.drip_days) * 24 * 60 * 60 * 1000)
+      if (Date.now() < unlockMs) {
+        const error = new Error(`This lesson is locked until ${new Date(unlockMs).toDateString()}`)
+        error.status = 403
+        throw error
+      }
+    }
 
     const status = body.status || 'completed'
     const watchedSeconds = body.watchedSeconds || 0

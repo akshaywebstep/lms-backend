@@ -82,13 +82,6 @@ router.get('/materials', coachOnly, h(learningController.listCoachMaterials))
 router.post('/materials', coachOnly, h(learningController.createCoachMaterial))
 router.delete('/materials/:id', coachOnly, h(learningController.deleteCoachMaterial))
 
-// ─── Pricing Plans ────────────────────────────────────────────────────────────
-router.get('/pricing-plans', coachOnly, h(learningController.listPricingPlans))
-router.post('/pricing-plans', coachOnly, h(learningController.createPricingPlan))
-router.put('/pricing-plans/:id', coachOnly, h(learningController.updatePricingPlan))
-router.patch('/pricing-plans/:id', coachOnly, h(learningController.updatePricingPlan))
-router.delete('/pricing-plans/:id', coachOnly, h(learningController.deletePricingPlan))
-
 // ─── Categories (Coach Custom) ────────────────────────────────────────────────
 router.post('/categories', coachOnly, h(masterDataController.createCoachCategory))
 

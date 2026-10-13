@@ -26,8 +26,14 @@ const markRead = async (ctx) => {
   return ok(ctx.res, result)
 }
 
+const markAllRead = async (ctx) => {
+  const result = await NotificationService.markAllAsRead(ctx.user.id, ctx.user.role)
+  return ok(ctx.res, result)
+}
+
 module.exports = {
   list,
   create,
   markRead,
+  markAllRead,
 }

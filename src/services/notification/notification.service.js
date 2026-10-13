@@ -24,8 +24,11 @@ class NotificationService {
       title: n.title,
       message: n.message,
       isRead: Boolean(n.is_read),
+      is_read: Boolean(n.is_read),
       readAt: n.read_at,
+      read_at: n.read_at,
       createdAt: n.created_at,
+      created_at: n.created_at,
     }))
   }
 
@@ -47,6 +50,23 @@ class NotificationService {
     await Notification.update(
       { is_read: true, read_at: new Date() },
       { where: { id } }
+    )
+    return { success: true }
+  }
+
+  static async markAllAsRead(userId, role) {
+    await Notification.update(
+      { is_read: true, read_at: new Date() },
+      {
+        where: {
+          is_read: false,
+          [Op.or]: [
+            { recipient_id: userId },
+            { recipient_role: role },
+            { recipient_role: 'all' },
+          ],
+        },
+      }
     )
     return { success: true }
   }

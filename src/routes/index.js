@@ -49,6 +49,7 @@ router.get('/payments/history', auth(), h(paymentController.history))
 // ─── Notification Routes ──────────────────────────────────────────────────────
 router.get('/notifications', auth(), h(notificationController.list))
 router.post('/notifications', auth(), h(notificationController.create))
+router.patch('/notifications/read-all', auth(), h(notificationController.markAllRead))
 router.patch('/notifications/:id/read', auth(), h(notificationController.markRead))
 
 // ─── Search Routes ────────────────────────────────────────────────────────────

@@ -203,7 +203,7 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error('[SERVER ERROR]', err?.stack || err)
   if (res.headersSent) return next(err)
-  return fail(res, 500, 'Internal server error', process.env.NODE_ENV !== 'production' ? err.message : undefined)
+  return fail(res, err.status || 500, err.message || 'Internal server error')
 })
 
 // ─── Start Server With Retry (synconode pattern) ──────────────────────────────

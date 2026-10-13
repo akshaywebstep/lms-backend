@@ -258,6 +258,10 @@ class AssessmentService {
   static async listStudentQuizzes(studentId) {
     const enrollments = await Enrollment.findAll({ where: { student_id: studentId } })
     const courseIds = enrollments.map((e) => e.course_id)
+    const enrollmentMap = {}
+    enrollments.forEach((e) => {
+      enrollmentMap[e.course_id] = e
+    })
 
     const quizzes = await Quiz.findAll({
       where: { course_id: { [Op.in]: courseIds } },
@@ -267,7 +271,44 @@ class AssessmentService {
       ],
     })
 
-    return quizzes
+    const nowTime = Date.now()
+    return quizzes.map((q) => {
+      const item = q.toJSON()
+      const enrollment = enrollmentMap[item.course_id]
+      const enrolledDate = enrollment ? new Date(enrollment.enrolled_at || enrollment.created_at) : null
+      let isLocked = false
+      let unlocksAt = null
+
+      if (enrolledDate && Number(item.drip_days) > 0) {
+        const unlockMs = enrolledDate.getTime() + (Number(item.drip_days) * 24 * 60 * 60 * 1000)
+        unlocksAt = new Date(unlockMs)
+        if (nowTime < unlockMs) {
+          isLocked = true
+        }
+      }
+
+      const attempts = item.attempts || []
+      const avgScore = attempts.length
+        ? Math.round(attempts.reduce((sum, a) => sum + Number(a.score || 0), 0) / attempts.length)
+        : 0
+
+      return {
+        id: item.id,
+        courseId: item.course_id,
+        course: item.course,
+        title: item.title,
+        description: item.description,
+        passingScore: item.passing_score,
+        dripDays: item.drip_days,
+        questionItems: item.questions_json || [],
+        questions: Array.isArray(item.questions_json) ? item.questions_json.length : 0,
+        attempts: attempts.length,
+        avgScore,
+        isLocked,
+        unlocksAt,
+        status: item.status,
+      }
+    })
   }
 
   static async attemptStudentQuiz(studentId, quizId, body) {
@@ -278,6 +319,17 @@ class AssessmentService {
       where: { student_id: studentId, course_id: quiz.course_id },
     })
     if (!enrollment) return null
+
+    // Enforce drip days lock
+    if (Number(quiz.drip_days) > 0) {
+      const enrolledDate = new Date(enrollment.enrolled_at || enrollment.created_at)
+      const unlockMs = enrolledDate.getTime() + (Number(quiz.drip_days) * 24 * 60 * 60 * 1000)
+      if (Date.now() < unlockMs) {
+        const error = new Error(`This quiz is locked until ${new Date(unlockMs).toDateString()}`)
+        error.status = 403
+        throw error
+      }
+    }
 
     const attemptId = makeId('q_att')
     const attempt = await QuizAttempt.create({
@@ -297,6 +349,10 @@ class AssessmentService {
   static async listStudentAssignments(studentId) {
     const enrollments = await Enrollment.findAll({ where: { student_id: studentId } })
     const courseIds = enrollments.map((e) => e.course_id)
+    const enrollmentMap = {}
+    enrollments.forEach((e) => {
+      enrollmentMap[e.course_id] = e
+    })
 
     const assignments = await Assignment.findAll({
       where: { course_id: { [Op.in]: courseIds } },
@@ -311,7 +367,54 @@ class AssessmentService {
       ],
     })
 
-    return assignments
+    const nowTime = Date.now()
+    return assignments.map((a) => {
+      const item = a.toJSON()
+      const enrollment = enrollmentMap[item.course_id]
+      const enrolledDate = enrollment ? new Date(enrollment.enrolled_at || enrollment.created_at) : null
+      let isLocked = false
+      let unlocksAt = null
+
+      if (enrolledDate && Number(item.drip_days) > 0) {
+        const unlockMs = enrolledDate.getTime() + (Number(item.drip_days) * 24 * 60 * 60 * 1000)
+        unlocksAt = new Date(unlockMs)
+        if (nowTime < unlockMs) {
+          isLocked = true
+        }
+      }
+
+      const submission = (item.submissions && item.submissions[0]) ? {
+        id: item.submissions[0].id,
+        status: item.submissions[0].status,
+        score: item.submissions[0].score,
+        feedback: item.submissions[0].feedback,
+        answerText: item.submissions[0].answer_text,
+        fileUrl: item.submissions[0].file_url,
+        submittedAt: item.submissions[0].submitted_at,
+      } : null
+
+      const assignmentObj = {
+        id: item.id,
+        courseId: item.course_id,
+        course: item.course,
+        title: item.title,
+        description: item.description,
+        dueAt: item.due_at,
+        maxScore: item.max_score,
+        dripDays: item.drip_days,
+        attachmentUrl: item.attachment_url,
+        attachmentName: item.attachment_name,
+        isLocked,
+        unlocksAt,
+        status: item.status,
+      }
+
+      return {
+        assignment: assignmentObj,
+        submission,
+        ...assignmentObj,
+      }
+    })
   }
 
   static async submitStudentAssignment(studentId, assignmentId, body) {
@@ -322,6 +425,17 @@ class AssessmentService {
       where: { student_id: studentId, course_id: assignment.course_id },
     })
     if (!enrollment) return null
+
+    // Enforce drip days lock
+    if (Number(assignment.drip_days) > 0) {
+      const enrolledDate = new Date(enrollment.enrolled_at || enrollment.created_at)
+      const unlockMs = enrolledDate.getTime() + (Number(assignment.drip_days) * 24 * 60 * 60 * 1000)
+      if (Date.now() < unlockMs) {
+        const error = new Error(`This assignment is locked until ${new Date(unlockMs).toDateString()}`)
+        error.status = 403
+        throw error
+      }
+    }
 
     const subId = makeId('sub')
     const sub = await AssignmentSubmission.create({

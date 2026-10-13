@@ -113,42 +113,6 @@ const deleteCoachMaterial = async (ctx) => {
   return ok(ctx.res, { success: true })
 }
 
-// Pricing Plans
-const listPricingPlans = async (ctx) => {
-  const setting = await PlatformSetting.findByPk(`pricing_plans:${ctx.user.id}`)
-  return ok(ctx.res, { plans: setting ? setting.setting_value : [] })
-}
-
-const createPricingPlan = async (ctx) => {
-  const settingKey = `pricing_plans:${ctx.user.id}`
-  const setting = await PlatformSetting.findByPk(settingKey)
-  const current = (setting ? setting.setting_value : []) || []
-  const newPlan = { id: makeId('plan'), ...ctx.body }
-  current.push(newPlan)
-  await PlatformSetting.upsert({ setting_key: settingKey, setting_value: current })
-  return created(ctx.res, { plan: newPlan })
-}
-
-const updatePricingPlan = async (ctx) => {
-  const settingKey = `pricing_plans:${ctx.user.id}`
-  const setting = await PlatformSetting.findByPk(settingKey)
-  const current = (setting ? setting.setting_value : []) || []
-  const idx = current.findIndex((p) => p.id === ctx.params.id)
-  if (idx === -1) return fail(ctx.res, 404, 'Plan not found')
-  current[idx] = { ...current[idx], ...ctx.body }
-  await PlatformSetting.upsert({ setting_key: settingKey, setting_value: current })
-  return ok(ctx.res, { plan: current[idx] })
-}
-
-const deletePricingPlan = async (ctx) => {
-  const settingKey = `pricing_plans:${ctx.user.id}`
-  const setting = await PlatformSetting.findByPk(settingKey)
-  const current = (setting ? setting.setting_value : []) || []
-  const filtered = current.filter((p) => p.id !== ctx.params.id)
-  await PlatformSetting.upsert({ setting_key: settingKey, setting_value: filtered })
-  return ok(ctx.res, { success: true })
-}
-
 // Student Learning
 const studentCourseContent = async (ctx) => {
   const content = await LearningService.getStudentCourseContent(ctx.user.id, ctx.params.courseId)
@@ -157,27 +121,39 @@ const studentCourseContent = async (ctx) => {
 }
 
 const updateStudentLessonProgress = async (ctx) => {
-  const result = await LearningService.updateStudentLessonProgress(ctx.user.id, ctx.params.id, ctx.body)
-  if (!result) return fail(ctx.res, 404, 'Lesson or enrollment not found')
-  return ok(ctx.res, result)
+  try {
+    const result = await LearningService.updateStudentLessonProgress(ctx.user.id, ctx.params.id, ctx.body)
+    if (!result) return fail(ctx.res, 404, 'Lesson or enrollment not found')
+    return ok(ctx.res, result)
+  } catch (err) {
+    return fail(ctx.res, err.status || 400, err.message || 'Progress update failed')
+  }
 }
 
 const listStudentQuizzes = async (ctx) =>
   ok(ctx.res, { quizzes: await AssessmentService.listStudentQuizzes(ctx.user.id) })
 
 const attemptStudentQuiz = async (ctx) => {
-  const attempt = await AssessmentService.attemptStudentQuiz(ctx.user.id, ctx.params.id, ctx.body)
-  if (!attempt) return fail(ctx.res, 404, 'Quiz or enrollment not found')
-  return ok(ctx.res, { attempt })
+  try {
+    const attempt = await AssessmentService.attemptStudentQuiz(ctx.user.id, ctx.params.id, ctx.body)
+    if (!attempt) return fail(ctx.res, 404, 'Quiz or enrollment not found')
+    return ok(ctx.res, { attempt })
+  } catch (err) {
+    return fail(ctx.res, err.status || 400, err.message || 'Quiz attempt failed')
+  }
 }
 
 const listStudentAssignments = async (ctx) =>
   ok(ctx.res, { assignments: await AssessmentService.listStudentAssignments(ctx.user.id) })
 
 const submitStudentAssignment = async (ctx) => {
-  const submission = await AssessmentService.submitStudentAssignment(ctx.user.id, ctx.params.id, ctx.body)
-  if (!submission) return fail(ctx.res, 404, 'Assignment or enrollment not found')
-  return created(ctx.res, { submission })
+  try {
+    const submission = await AssessmentService.submitStudentAssignment(ctx.user.id, ctx.params.id, ctx.body)
+    if (!submission) return fail(ctx.res, 404, 'Assignment or enrollment not found')
+    return created(ctx.res, { submission })
+  } catch (err) {
+    return fail(ctx.res, err.status || 400, err.message || 'Assignment submission failed')
+  }
 }
 
 const listStudentCertificates = async (ctx) => {
@@ -205,10 +181,6 @@ module.exports = {
   listCoachMaterials,
   createCoachMaterial,
   deleteCoachMaterial,
-  listPricingPlans,
-  createPricingPlan,
-  updatePricingPlan,
-  deletePricingPlan,
   studentCourseContent,
   updateStudentLessonProgress,
   listStudentQuizzes,

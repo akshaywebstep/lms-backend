@@ -7,6 +7,8 @@ const {
   CourseMasterOption,
   Lesson,
   LessonTopic,
+  Quiz,
+  Assignment,
   User,
   UserProfile,
   Enrollment,
@@ -27,6 +29,57 @@ const formatCourse = (c) => {
   const requirements = (plain.requirementsList || []).map((r) => r.requirement_text || r)
   const outcomes = (plain.outcomesList || []).map((o) => o.outcome_text || o)
 
+  const coachObj = plain.coach
+    ? {
+        id: plain.coach.id,
+        name: plain.coach.name,
+        email: plain.coach.email,
+        avatar: plain.coach.avatar_url,
+        title: plain.coach.title,
+        role: plain.coach.role || 'coach',
+      }
+    : null
+
+  const creatorObj = plain.categoryOption?.creator
+    ? {
+        id: plain.categoryOption.creator.id,
+        name: plain.categoryOption.creator.name,
+        email: plain.categoryOption.creator.email,
+        avatar: plain.categoryOption.creator.avatar_url,
+        title: plain.categoryOption.creator.title,
+        role: plain.categoryOption.creator.role || 'coach',
+      }
+    : coachObj
+
+  const categoryMeta = {
+    id: plain.category_id || plain.categoryOption?.id || null,
+    type: 'category',
+    name: plain.category,
+    status: plain.categoryOption?.status || 'active',
+    creatorRole: plain.categoryOption?.creator_role || (coachObj ? 'coach' : 'system'),
+    createdBy: creatorObj,
+  }
+
+  const difficultyMeta = {
+    id: plain.difficulty_id || plain.difficultyOption?.id || null,
+    type: 'difficulty',
+    name: plain.difficulty,
+    status: plain.difficultyOption?.status || 'active',
+    creatorRole: plain.difficultyOption?.creator_role || 'system',
+    createdBy: creatorObj,
+  }
+
+  const languageMeta = {
+    id: plain.language_id || plain.languageOption?.id || null,
+    type: 'language',
+    name: plain.language,
+    status: plain.languageOption?.status || 'active',
+    creatorRole: plain.languageOption?.creator_role || 'system',
+    createdBy: creatorObj,
+  }
+
+  const students = (plain.enrollments || []).length
+
   return {
     id: plain.id,
     coachId: plain.coach_id,
@@ -35,6 +88,10 @@ const formatCourse = (c) => {
     category: plain.category,
     difficulty: plain.difficulty,
     language: plain.language,
+    categoryMeta,
+    difficultyMeta,
+    languageMeta,
+    createdBy: creatorObj,
     description: plain.description,
     price: Number(plain.price || 0),
     currency: plain.currency,
@@ -45,18 +102,11 @@ const formatCourse = (c) => {
     publishedAt: plain.published_at,
     requirements,
     outcomes,
-    coach: plain.coach
-      ? {
-          id: plain.coach.id,
-          name: plain.coach.name,
-          email: plain.coach.email,
-          avatar: plain.coach.avatar_url,
-          title: plain.coach.title,
-        }
-      : null,
+    coach: coachObj,
     lessons: plain.lessons || [],
     lessonsCount: (plain.lessons || []).length,
-    studentsCount: (plain.enrollments || []).length,
+    studentsCount: students,
+    students,
     createdAt: plain.created_at,
     updatedAt: plain.updated_at,
   }
@@ -110,6 +160,11 @@ class CourseService {
       where,
       include: [
         { model: User, as: 'coach' },
+        {
+          model: CourseMasterOption,
+          as: 'categoryOption',
+          include: [{ model: User, as: 'creator' }],
+        },
         { model: CourseRequirement, as: 'requirementsList' },
         { model: CourseOutcome, as: 'outcomesList' },
         { model: Lesson, as: 'lessons' },
@@ -166,7 +221,7 @@ class CourseService {
       description: body.description,
       price: body.price !== undefined ? body.price : 0.0,
       currency: body.currency || 'INR',
-      status: body.status || 'draft',
+      status: 'draft',
       thumbnail_url: body.thumbnailUrl || body.thumbnail || null,
       promo_video: body.promoVideo || null,
     })
@@ -206,7 +261,26 @@ class CourseService {
     if (body.description) updates.description = body.description
     if (body.price !== undefined) updates.price = body.price
     if (body.currency) updates.currency = body.currency
-    if (body.status) updates.status = body.status
+
+    if (body.status) {
+      if (body.status === 'published') {
+        const lessonCount = await Lesson.count({ where: { course_id: courseId } })
+        const quizCount = await Quiz.count({ where: { course_id: courseId } })
+        const assignmentCount = await Assignment.count({ where: { course_id: courseId } })
+
+        const missing = []
+        if (lessonCount === 0) missing.push('at least 1 lesson')
+        if (quizCount === 0) missing.push('at least 1 quiz')
+        if (assignmentCount === 0) missing.push('at least 1 assignment')
+
+        if (missing.length > 0) {
+          const error = new Error(`Cannot publish course: Missing ${missing.join(', ')}. Please create them first before publishing.`)
+          error.status = 400
+          throw error
+        }
+      }
+      updates.status = body.status
+    }
     if (body.thumbnailUrl !== undefined || body.thumbnail !== undefined) {
       updates.thumbnail_url = body.thumbnailUrl || body.thumbnail
     }

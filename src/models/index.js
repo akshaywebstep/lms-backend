@@ -46,6 +46,12 @@ CourseRequirement.belongsTo(Course, { foreignKey: 'course_id', as: 'course' })
 Course.hasMany(CourseOutcome, { foreignKey: 'course_id', as: 'outcomesList' })
 CourseOutcome.belongsTo(Course, { foreignKey: 'course_id', as: 'course' })
 
+// 🏷️ Course & Master Options (Category, Difficulty, Language)
+Course.belongsTo(CourseMasterOption, { foreignKey: 'category_id', as: 'categoryOption' })
+Course.belongsTo(CourseMasterOption, { foreignKey: 'difficulty_id', as: 'difficultyOption' })
+Course.belongsTo(CourseMasterOption, { foreignKey: 'language_id', as: 'languageOption' })
+CourseMasterOption.belongsTo(User, { foreignKey: 'created_by', as: 'creator' })
+
 // 🎓 Course & Lessons
 Course.hasMany(Lesson, { foreignKey: 'course_id', as: 'lessons' })
 Lesson.belongsTo(Course, { foreignKey: 'course_id', as: 'course' })

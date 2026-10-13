@@ -81,9 +81,11 @@ class AdminDashboardService {
       })
       const courses = await Course.findAll({
         include: [
+          { model: User, as: 'coach', attributes: ['id', 'name', 'email'] },
           { model: Enrollment, as: 'enrollments', attributes: ['id'] },
           { model: Payment, as: 'payments', attributes: ['amount', 'status'] },
         ],
+        order: [['created_at', 'DESC']],
       })
 
       const courseSales = courses.map((c) => {
@@ -94,6 +96,10 @@ class AdminDashboardService {
         return {
           id: c.id,
           title: c.title,
+          category: c.category || 'General',
+          price: c.price || 0,
+          status: c.status || 'draft',
+          coach: c.coach ? { id: c.coach.id, name: c.coach.name, email: c.coach.email } : null,
           sales,
           revenue: rev,
         }

@@ -21,9 +21,13 @@ const coachCourseDetail = async (ctx) => {
 }
 
 const updateCoachCourse = async (ctx) => {
-  const course = await CourseService.updateCourse(ctx.params.id, ctx.user.id, ctx.body)
-  if (!course) return fail(ctx.res, 404, 'Course not found')
-  return ok(ctx.res, { course })
+  try {
+    const course = await CourseService.updateCourse(ctx.params.id, ctx.user.id, ctx.body)
+    if (!course) return fail(ctx.res, 404, 'Course not found')
+    return ok(ctx.res, { course })
+  } catch (err) {
+    return fail(ctx.res, err.status || 400, err.message || 'Failed to update course')
+  }
 }
 
 const browseCourses = async (ctx) =>
@@ -51,10 +55,14 @@ const adminCourseDetail = async (ctx) => {
 }
 
 const updateAdminCourse = async (ctx) => {
-  const current = await CourseService.getCourseDetail(ctx.params.id)
-  if (!current) return fail(ctx.res, 404, 'Course not found')
-  const course = await CourseService.updateCourse(ctx.params.id, current.coachId, ctx.body)
-  return ok(ctx.res, { course })
+  try {
+    const current = await CourseService.getCourseDetail(ctx.params.id)
+    if (!current) return fail(ctx.res, 404, 'Course not found')
+    const course = await CourseService.updateCourse(ctx.params.id, current.coachId, ctx.body)
+    return ok(ctx.res, { course })
+  } catch (err) {
+    return fail(ctx.res, err.status || 400, err.message || 'Failed to update course')
+  }
 }
 
 module.exports = {
