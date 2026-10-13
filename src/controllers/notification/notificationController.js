@@ -1,7 +1,7 @@
 'use strict'
 
-const NotificationService = require('../services/notification/notification.service')
-const { ok, created, fail } = require('../utils/response')
+const NotificationService = require('../../services/notification/notification.service')
+const { ok, created, fail } = require('../../utils/response')
 
 const list = async (ctx) => {
   const notifications = await NotificationService.listForUser(ctx.user.id, ctx.user.role)

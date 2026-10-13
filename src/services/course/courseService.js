@@ -10,8 +10,8 @@ const {
   User,
   UserProfile,
   Enrollment,
-} = require('../models')
-const { makeId } = require('../utils/id')
+} = require('../../models')
+const { makeId } = require('../../utils/id')
 const { Op } = require('sequelize')
 
 const slugify = (value) =>

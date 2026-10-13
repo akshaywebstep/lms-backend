@@ -1,8 +1,8 @@
 'use strict'
 
-const UserService = require('../services/user.service')
-const { ok, fail } = require('../utils/response')
-const { toPublicUser } = require('../utils/userHelper')
+const UserService = require('../../services/profile/profileService')
+const { ok, fail } = require('../../utils/response')
+const { toPublicUser } = require('../../utils/userHelper')
 
 const getProfile = async (ctx) => {
   const user = await UserService.findById(ctx.user.id)

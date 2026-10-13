@@ -1,7 +1,7 @@
 'use strict'
 
-const MasterDataService = require('../services/masterData/masterData.service')
-const { ok, created, fail } = require('../utils/response')
+const MasterDataService = require('../../services/masterData/masterData.service')
+const { ok, created, fail } = require('../../utils/response')
 
 const listPublic = async (ctx) => ok(ctx.res, await MasterDataService.listPublic())
 const listAdminAll = async (ctx) => ok(ctx.res, await MasterDataService.listAdminAll())

@@ -1,7 +1,7 @@
 'use strict'
 
-const { Course, User } = require('../models')
-const { ok } = require('../utils/response')
+const { Course, User } = require('../../models')
+const { ok } = require('../../utils/response')
 const { Op } = require('sequelize')
 
 const run = async (ctx) => {

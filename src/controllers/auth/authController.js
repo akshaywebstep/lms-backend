@@ -1,14 +1,14 @@
 'use strict'
 
-const AuthService = require('../services/auth.service')
-const UserService = require("../services/user.service");
-const { ok, created, fail } = require('../utils/response')
-const { toPublicUser, cleanEmail } = require("../utils/userHelper");
-const { hashPassword, verifyPassword } = require('../utils/password')
-const { makeId } = require('../utils/id')
-const { sendMail } = require('../services/mail')
-const { PasswordOtp, ResetToken, User } = require("../models");
-const { env } = require("../config/db");
+const AuthService = require('../../services/auth/authService')
+const UserService = require('../../services/profile/profileService')
+const { ok, created, fail } = require('../../utils/response')
+const { toPublicUser, cleanEmail } = require('../../utils/userHelper')
+const { hashPassword, verifyPassword } = require('../../utils/password')
+const { makeId } = require('../../utils/id')
+const { sendMail } = require('../../services/mail')
+const { PasswordOtp, ResetToken, User } = require('../../models')
+const { env } = require('../../config/db')
 const crypto = require('crypto')
 const { Op } = require("sequelize");
 

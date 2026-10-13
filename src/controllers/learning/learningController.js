@@ -1,10 +1,10 @@
 'use strict'
 
-const { ok, created, fail } = require('../utils/response')
-const LearningService = require('../services/learning/learning.service')
-const AssessmentService = require('../services/learning/assessment.service')
-const { Certificate, Upload, PlatformSetting } = require('../models')
-const { makeId } = require('../utils/id')
+const { ok, created, fail } = require('../../utils/response')
+const LearningService = require('../../services/learning/learning.service')
+const AssessmentService = require('../../services/learning/assessment.service')
+const { Certificate, Upload, PlatformSetting } = require('../../models')
+const { makeId } = require('../../utils/id')
 
 // Lessons
 const listCoachLessons = async (ctx) =>

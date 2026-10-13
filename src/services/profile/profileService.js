@@ -7,10 +7,10 @@ const {
   RevokedToken,
   PasswordOtp,
   ResetToken,
-} = require("../models");
-const { cleanEmail, toPublicUser } = require("../utils/userHelper");
-const { makeId } = require("../utils/id");
-const { hashPassword, verifyPassword } = require("../utils/password");
+} = require('../../models')
+const { cleanEmail, toPublicUser } = require('../../utils/userHelper')
+const { makeId } = require('../../utils/id')
+const { hashPassword, verifyPassword } = require('../../utils/password')
 
 class UserService {
   static async findByEmail(email) {

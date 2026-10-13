@@ -1,8 +1,8 @@
 'use strict'
 
-const { EmailConfig } = require('../models')
-const { ok, created, fail } = require('../utils/response')
-const { sendMail } = require('../services/mail')
+const { EmailConfig } = require('../../../models')
+const { ok, created, fail } = require('../../../utils/response')
+const { sendMail } = require('../../../services/mail')
 
 const list = async (ctx) => {
   const configs = await EmailConfig.findAll({ order: [['id', 'ASC']] })

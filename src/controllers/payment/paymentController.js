@@ -1,7 +1,7 @@
 'use strict'
 
-const PaymentService = require('../services/payment/payment.service')
-const { ok, created, fail } = require('../utils/response')
+const PaymentService = require('../../services/payment/payment.service')
+const { ok, created, fail } = require('../../utils/response')
 
 const checkout = async (ctx) => {
   try {

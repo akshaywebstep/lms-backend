@@ -1,7 +1,7 @@
 'use strict'
 
-const { ok, created, fail } = require('../utils/response')
-const CourseService = require('../services/course.service')
+const { ok, created, fail } = require('../../utils/response')
+const CourseService = require('../../services/course/courseService')
 
 const createCourse = async (ctx) => {
   if (!ctx.body.title || !ctx.body.category || !ctx.body.description) {

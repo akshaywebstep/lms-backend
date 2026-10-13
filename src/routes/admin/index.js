@@ -4,9 +4,9 @@ const express = require('express')
 const router = express.Router()
 
 const adminController = require('../../controllers/admin/adminController')
-const courseController = require('../../controllers/course.controller')
-const masterDataController = require('../../controllers/masterData.controller')
-const emailConfigController = require('../../controllers/emailConfig.controller')
+const courseController = require('../../controllers/course/courseController')
+const masterDataController = require('../../controllers/masterData/masterDataController')
+const emailConfigController = require('../../controllers/admin/settings/emailConfigController')
 const { auth } = require('../../middleware/auth')
 const { ROLES } = require('../../config/constants')
 

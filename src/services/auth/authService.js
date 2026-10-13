@@ -8,16 +8,16 @@ const {
   PasswordOtp,
   ResetToken,
   Notification,
-} = require("../models");
-const UserService = require("./user.service");
-const { cleanEmail, toPublicUser } = require("../utils/userHelper");
-const { createToken, readToken } = require('./token')
-const { hashPassword, verifyPassword } = require('../utils/password')
-const { sendMail } = require('./mail')
-const { makeId } = require('../utils/id')
-const { saveUploadedFile } = require('./upload')
-const { ROLES } = require('../config/constants')
-const { env, sequelize } = require("../config/db");
+} = require('../../models')
+const UserService = require('../profile/profileService')
+const { cleanEmail, toPublicUser } = require('../../utils/userHelper')
+const { createToken, readToken } = require('../token')
+const { hashPassword, verifyPassword } = require('../../utils/password')
+const { sendMail } = require('../mail')
+const { makeId } = require('../../utils/id')
+const { saveUploadedFile } = require('../upload')
+const { ROLES } = require('../../config/constants')
+const { env, sequelize } = require('../../config/db')
 const crypto = require('crypto')
 const { Op } = require("sequelize");
 

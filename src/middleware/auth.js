@@ -3,7 +3,7 @@
 const { env } = require('../config/db')
 const { readToken } = require('../services/token')
 const { fail } = require('../utils/response')
-const UserService = require('../services/user.service')
+const UserService = require('../services/profile/profileService')
 const { Session, RevokedToken } = require('../models')
 const { Op } = require('sequelize')
 

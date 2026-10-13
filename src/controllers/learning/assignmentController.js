@@ -1,7 +1,7 @@
 'use strict'
 
-const { ok, created, fail } = require('../utils/response')
-const AssessmentService = require('../services/learning/assessment.service')
+const { ok, created, fail } = require('../../utils/response')
+const AssessmentService = require('../../services/learning/assessment.service')
 
 const list = async (ctx) =>
   ok(ctx.res, {
