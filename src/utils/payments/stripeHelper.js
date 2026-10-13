@@ -1,4 +1,4 @@
-const env = require('../../config/config')
+const env = require('../../config/db').env
 
 let _stripe = null
 const getStripe = () => {

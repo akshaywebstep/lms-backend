@@ -1,86 +1,30 @@
-const crypto = require('crypto')
-const env = require('../config/config')
-const db = require('../config/db')
-const { ROLES } = require('../config/constants')
-const { ok, created, fail } = require('../utils/response')
-const { makeId } = require('../utils/id')
-const { hashPassword, verifyPassword } = require('../utils/password')
-const { createToken, readToken } = require('../services/token')
-const { sendMail } = require('../services/mail')
-const userModel = require('../models/user.model')
-const sessionModel = require('../models/session.model')
-const notificationModel = require('../models/notification.model')
-const { saveUploadedFile } = require('../services/upload')
+'use strict'
 
-const makeSession = async (user) => {
-  const access = createToken(user, 'access', env.accessTtlMs)
-  const refresh = createToken(user, 'refresh', env.refreshTtlMs)
-  await sessionModel.createSession({
-    userId: user.id,
-    accessTokenId: access.tokenId,
-    refreshTokenId: refresh.tokenId,
-    refreshExpiresAt: refresh.payload.exp,
-  })
-  return { user: userModel.toPublicUser(user), accessToken: access.token, refreshToken: refresh.token }
-}
+const AuthService = require('../services/auth.service')
+const userModel = require('../models/user.model')
+const { ok, created, fail } = require('../utils/response')
+const { hashPassword, verifyPassword } = require('../utils/password')
+const { makeId } = require('../utils/id')
+const { sendMail } = require('../services/mail')
+const { env, withTransaction, query, first } = require('../config/db')
+const crypto = require('crypto')
 
 const login = async (ctx) => {
-  const { email, password, role } = ctx.body
-  if (!email || !password) return fail(ctx.res, 400, 'Email and password are required')
-  const user = await userModel.findByEmail(email)
-  if (!user || !verifyPassword(password, user)) return fail(ctx.res, 401, 'Invalid credentials')
-  if (role && user.role !== role) return fail(ctx.res, 403, `This account is not a ${role}`)
-  if (user.status !== 'active') return fail(ctx.res, 403, 'Your account is not active')
-  return ok(ctx.res, await makeSession(user))
+  try {
+    const session = await AuthService.login(ctx.body)
+    return ok(ctx.res, session)
+  } catch (err) {
+    return fail(ctx.res, err.status || 500, err.message || 'Internal server error')
+  }
 }
 
 const register = async (ctx) => {
-  const body = ctx.body
-  if (!body.name || !body.email || !body.password) return fail(ctx.res, 400, 'Name, email and password are required')
-  if (await userModel.findByEmail(body.email)) return fail(ctx.res, 409, 'Email is already registered')
-
-  const faceImage = body.files?.find((file) => file.fieldName === 'faceImage' || file.fieldName === 'avatar')
-  if (!faceImage) return fail(ctx.res, 400, 'Student face image is required')
-  if (!String(faceImage.mimeType || '').startsWith('image/')) return fail(ctx.res, 400, 'Student face image must be an image file')
-
-  const uploaded = saveUploadedFile(faceImage)
-  const role = ROLES.STUDENT
-  const hashed = hashPassword(body.password)
-  const user = {
-    id: makeId(role),
-    name: String(body.name).trim(),
-    email: userModel.cleanEmail(body.email),
-    role,
-    title: 'Learner',
-    avatar: `${env.publicUrl}${uploaded.url}`,
-    passwordHash: hashed.passwordHash,
-    salt: hashed.salt,
+  try {
+    const session = await AuthService.register(ctx.body)
+    return created(ctx.res, session)
+  } catch (err) {
+    return fail(ctx.res, err.status || 500, err.message || 'Internal server error')
   }
-  const profile = {
-    ...(body.profile && typeof body.profile === 'object' ? body.profile : {}),
-    phone: body.phone || body.profile?.phone,
-    city: body.city || body.profile?.city,
-    education: body.education || body.profile?.education,
-    state: body.state || body.profile?.state,
-    country: body.country || body.profile?.country || 'India',
-  }
-
-  await db.withTransaction(async (connection) => userModel.create(connection, user, profile))
-  const saved = await userModel.findById(user.id)
-  await notificationModel.create({
-    recipientRole: ROLES.ADMIN,
-    title: 'New account registered',
-    message: `${saved.name} joined as ${saved.role}.`,
-  })
-
-  await sendMail({
-    module: 'student',
-    action: 'student-registered',
-    to: saved.email,
-    vars: { name: saved.name, appName: env.appName },
-  })
-
-  return created(ctx.res, await makeSession(saved))
 }
 
 const me = async (ctx) => ok(ctx.res, { user: userModel.toPublicUser(ctx.user) })
@@ -88,45 +32,25 @@ const verifyToken = async (ctx) => ok(ctx.res, { valid: true, user: userModel.to
 const verifyEmail = async (ctx) => ok(ctx.res, { success: true, verified: true, token: ctx.body.token || ctx.query.get('token') || null })
 
 const refreshToken = async (ctx) => {
-  const { refreshToken } = ctx.body
-  if (!refreshToken) return fail(ctx.res, 400, 'Refresh token is required')
-
-  let payload
   try {
-    payload = readToken(refreshToken)
-  } catch (error) {
-    return fail(ctx.res, 401, error.message)
+    const data = await AuthService.refreshToken(ctx.body.refreshToken)
+    return ok(ctx.res, data)
+  } catch (err) {
+    return fail(ctx.res, err.status || 500, err.message || 'Internal server error')
   }
-  if (payload.type !== 'refresh') return fail(ctx.res, 401, 'Use a refresh token')
-  if (await sessionModel.isRevoked(payload.jti)) return fail(ctx.res, 401, 'Refresh token is invalidated')
-
-  const user = await userModel.findById(payload.sub)
-  if (!user) return fail(ctx.res, 401, 'User not found')
-  const access = createToken(user, 'access', env.accessTtlMs)
-  await sessionModel.createSession({
-    userId: user.id,
-    accessTokenId: access.tokenId,
-    refreshTokenId: payload.jti,
-    refreshExpiresAt: access.payload.exp,
-  })
-  return ok(ctx.res, { accessToken: access.token })
 }
 
 const logout = async (ctx) => {
-  await sessionModel.revokeToken({
-    tokenId: ctx.tokenPayload.jti,
-    userId: ctx.user.id,
-    expiresAt: ctx.tokenPayload.exp,
-  })
-  if (ctx.body.refreshToken) {
-    try {
-      const refresh = readToken(ctx.body.refreshToken)
-      await sessionModel.revokeToken({ tokenId: refresh.jti, userId: ctx.user.id, expiresAt: refresh.exp })
-    } catch {
-      // Logout should still succeed for the access token.
-    }
+  try {
+    const data = await AuthService.logout({
+      user: ctx.user,
+      tokenPayload: ctx.tokenPayload,
+      refreshToken: ctx.body.refreshToken,
+    })
+    return ok(ctx.res, data)
+  } catch (err) {
+    return fail(ctx.res, 500, 'Logout failed')
   }
-  return ok(ctx.res, { success: true })
 }
 
 const forgotPassword = async (ctx) => {
@@ -138,7 +62,7 @@ const forgotPassword = async (ctx) => {
   const resetToken = makeId('reset')
   const otp = String(crypto.randomInt(100000, 999999))
   const hashedOtp = hashPassword(otp)
-  await db.withTransaction(async (connection) => {
+  await withTransaction(async (connection) => {
     await connection.execute('DELETE FROM reset_tokens WHERE email = ?', [email])
     await connection.execute('DELETE FROM password_otps WHERE email = ?', [email])
     await connection.execute('INSERT INTO reset_tokens (token, email, expires_at) VALUES (?, ?, ?)', [
@@ -169,8 +93,8 @@ const requestPasswordOtp = async (ctx) => {
   if (!user) return fail(ctx.res, 404, 'No account found for this email')
   const otp = String(crypto.randomInt(100000, 999999))
   const hashed = hashPassword(otp)
-  await db.query('DELETE FROM password_otps WHERE email = ?', [email])
-  await db.query('INSERT INTO password_otps (email, otp_hash, salt, expires_at) VALUES (?, ?, ?, ?)', [
+  await query('DELETE FROM password_otps WHERE email = ?', [email])
+  await query('INSERT INTO password_otps (email, otp_hash, salt, expires_at) VALUES (?, ?, ?, ?)', [
     email,
     hashed.passwordHash,
     hashed.salt,
@@ -191,21 +115,21 @@ const resetPassword = async (ctx) => {
   let targetEmail = userModel.cleanEmail(email)
 
   if (token) {
-    const reset = await db.first('SELECT * FROM reset_tokens WHERE token = ? AND used_at IS NULL AND expires_at > NOW()', [token])
+    const reset = await first('SELECT * FROM reset_tokens WHERE token = ? AND used_at IS NULL AND expires_at > NOW()', [token])
     if (!reset) return fail(ctx.res, 400, 'Reset token is invalid or expired')
     targetEmail = reset.email
   }
   if (otp) {
-    const savedOtp = await db.first('SELECT * FROM password_otps WHERE email = ? AND used_at IS NULL AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1', [targetEmail])
+    const savedOtp = await first('SELECT * FROM password_otps WHERE email = ? AND used_at IS NULL AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1', [targetEmail])
     if (!savedOtp || !verifyPassword(otp, { salt: savedOtp.salt, passwordHash: savedOtp.otp_hash })) {
       return fail(ctx.res, 400, 'OTP is invalid or expired')
     }
-    await db.query('UPDATE password_otps SET used_at = NOW() WHERE id = ?', [savedOtp.id])
+    await query('UPDATE password_otps SET used_at = NOW() WHERE id = ?', [savedOtp.id])
   }
   const user = await userModel.findByEmail(targetEmail)
   if (!user) return fail(ctx.res, 404, 'User not found')
   await userModel.changePassword(user.id, hashPassword(password))
-  if (token) await db.query('UPDATE reset_tokens SET used_at = NOW() WHERE token = ?', [token])
+  if (token) await query('UPDATE reset_tokens SET used_at = NOW() WHERE token = ?', [token])
   return ok(ctx.res, { success: true })
 }
 

@@ -1,7 +1,7 @@
 const { ok, created, fail } = require('../utils/response')
 const emailConfigModel = require('../models/emailConfig.model')
 const { sendMail } = require('../services/mail')
-const env = require('../config/config')
+const env = require('../config/db').env
 
 const samplePreviewVars = {
   name: 'Rohan Sharma',

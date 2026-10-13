@@ -1,6 +1,6 @@
 const fs = require('fs')
 const path = require('path')
-const env = require('../config/config')
+const env = require('../config/db').env
 const db = require('../config/db')
 const { makeId } = require('../utils/id')
 const { parseJson } = require('./learning.model')

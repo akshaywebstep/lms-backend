@@ -3,7 +3,7 @@ const paymentModel = require('../models/payment.model')
 const notificationModel = require('../models/notification.model')
 const userModel = require('../models/user.model')
 const { sendMail } = require('../services/mail')
-const env = require('../config/config')
+const env = require('../config/db').env
 
 const notifyAndEmailPurchase = async ({ user, course, payment }) => {
   await notificationModel.create({

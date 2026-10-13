@@ -1,4 +1,4 @@
-const env = require('../config/config')
+const env = require('../config/db').env
 const db = require('../config/db')
 const { makeId } = require('../utils/id')
 const { createAndConfirmPayment } = require('../utils/payments/stripeHelper')

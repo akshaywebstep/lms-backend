@@ -1,5 +1,5 @@
 const db = require('../config/db')
-const env = require('../config/config')
+const env = require('../config/db').env
 
 const DEFAULT_TEMPLATES = [
   {

@@ -1,573 +1,270 @@
-const fs = require("fs");
-const http = require("http");
-const path = require("path");
-const { URL } = require("url");
+'use strict'
 
-const env = require("./config/config");
-const db = require("./config/db");
-const { sendJson, fail } = require("./utils/response");
-const { registerRoutes } = require("./routes");
-const { publicUploadPath } = require("./services/upload");
+const fs = require('fs')
+const path = require('path')
+const http = require('http')
+const express = require('express')
+const cors = require('cors')
 
-const routes = [];
+const { env, ping } = require('./config/db')
+const { registerRoutes } = require('./routes')
+const { publicUploadPath } = require('./services/upload')
+const { fail } = require('./utils/response')
 
-/**
- * Register route
- */
-const route = (method, pattern, handlers) => {
-  routes.push({
-    method,
-    pattern,
-    handlers: Array.isArray(handlers) ? handlers : [handlers],
-  });
-};
+const app = express()
 
-/**
- * Match route
- */
-const match = (actual, expected) => {
-  const a = actual.split("/").filter(Boolean);
-  const e = expected.split("/").filter(Boolean);
+// ─── Middleware ───────────────────────────────────────────────────────────────
 
-  if (a.length !== e.length) {
-    return null;
-  }
-
-  const params = {};
-
-  for (let i = 0; i < e.length; i += 1) {
-    if (e[i].startsWith(":")) {
-      params[e[i].slice(1)] = decodeURIComponent(a[i]);
-    } else if (e[i] !== a[i]) {
-      return null;
-    }
-  }
-
-  return params;
-};
-
-/**
- * Read request body
- */
-const readBuffer = async (req) =>
-  new Promise((resolve, reject) => {
-    const chunks = [];
-    let size = 0;
-
-    const MAX_BODY_SIZE = 100 * 1024 * 1024; // 100 MB
-
-    req.on("data", (chunk) => {
-      size += chunk.length;
-
-      if (size > MAX_BODY_SIZE) {
-        reject(new Error("Payload too large"));
-        req.destroy();
-        return;
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true)
+    if (env.allowedOrigins.includes(origin)) return callback(null, true)
+    try {
+      const parsed = new URL(origin)
+      if (['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)) {
+        return callback(null, true)
       }
+    } catch {}
+    return callback(null, true) // Permissive fallback for custom domain/demo links
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}))
 
-      chunks.push(chunk);
-    });
+// Security Headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('X-XSS-Protection', '1; mode=block')
+  next()
+})
 
-    req.on("end", () => {
-      resolve(Buffer.concat(chunks));
-    });
+// Static file uploads server
+const sendUpload = (req, res, pathname) => {
+  const fullPath = publicUploadPath(pathname)
+  if (!fullPath || !fs.existsSync(fullPath)) return false
 
-    req.on("error", reject);
-  });
-
-/**
- * Parse multipart/form-data
- */
-const parseMultipart = (buffer, contentType) => {
-  const boundaryMatch = contentType.match(
-    /boundary=(?:(?:"([^"]+)")|([^;]+))/i,
-  );
-
-  if (!boundaryMatch) {
-    throw new Error("Multipart boundary missing");
+  const ext = path.extname(fullPath).toLowerCase()
+  const types = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.pdf': 'application/pdf',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.ogg': 'video/ogg',
+    '.ogv': 'video/ogg',
+    '.mov': 'video/quicktime',
+    '.zip': 'application/zip',
+    '.html': 'text/html; charset=utf-8',
   }
 
-  const boundary = Buffer.from(
-    `--${boundaryMatch[1] || boundaryMatch[2]}`,
-  );
+  res.setHeader('Content-Type', types[ext] || 'application/octet-stream')
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
 
-  const fields = {};
-  const files = [];
+  if (ext === '.html' || ext === '.svg') {
+    res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+  }
 
-  let cursor = buffer.indexOf(boundary);
+  fs.createReadStream(fullPath).pipe(res)
+  return true
+}
+
+app.use('/uploads', (req, res) => {
+  if (!sendUpload(req, res, `/uploads${req.path}`)) {
+    return fail(res, 404, 'File not found')
+  }
+})
+
+// ─── Multipart Form-Data & Body Parsers ───────────────────────────────────────
+
+const parseMultipart = (buffer, contentType) => {
+  const boundaryMatch = contentType.match(/boundary=(?:(?:"([^"]+)")|([^;]+))/i)
+  if (!boundaryMatch) throw new Error('Multipart boundary missing')
+
+  const boundary = Buffer.from(`--${boundaryMatch[1] || boundaryMatch[2]}`)
+  const fields = {}
+  const files = []
+  let cursor = buffer.indexOf(boundary)
 
   while (cursor !== -1) {
-    cursor += boundary.length;
+    cursor += boundary.length
+    if (buffer[cursor] === 45 && buffer[cursor + 1] === 45) break
+    if (buffer[cursor] === 13 && buffer[cursor + 1] === 10) cursor += 2
 
-    // End boundary
-    if (buffer[cursor] === 45 && buffer[cursor + 1] === 45) {
-      break;
+    const next = buffer.indexOf(boundary, cursor)
+    if (next === -1) break
+
+    let part = buffer.slice(cursor, next)
+    if (part.length >= 2 && part[part.length - 2] === 13 && part[part.length - 1] === 10) {
+      part = part.slice(0, -2)
     }
 
-    // Skip CRLF
-    if (buffer[cursor] === 13 && buffer[cursor + 1] === 10) {
-      cursor += 2;
-    }
-
-    const next = buffer.indexOf(boundary, cursor);
-
-    if (next === -1) {
-      break;
-    }
-
-    let part = buffer.slice(cursor, next);
-
-    // Remove trailing CRLF
-    if (
-      part.length >= 2 &&
-      part[part.length - 2] === 13 &&
-      part[part.length - 1] === 10
-    ) {
-      part = part.slice(0, -2);
-    }
-
-    const headerEnd = part.indexOf(
-      Buffer.from("\r\n\r\n"),
-    );
-
+    const headerEnd = part.indexOf(Buffer.from('\r\n\r\n'))
     if (headerEnd !== -1) {
-      const headerText = part
-        .slice(0, headerEnd)
-        .toString("utf8");
-
-      const body = part.slice(headerEnd + 4);
-
-      const nameMatch = headerText.match(
-        /name="([^"]+)"/i,
-      );
-
-      const fileMatch = headerText.match(
-        /filename="([^"]*)"/i,
-      );
-
-      const typeMatch = headerText.match(
-        /content-type:\s*([^\r\n]+)/i,
-      );
-
-      const name = nameMatch?.[1];
+      const headerText = part.slice(0, headerEnd).toString('utf8')
+      const body = part.slice(headerEnd + 4)
+      const nameMatch = headerText.match(/name="([^"]+)"/i)
+      const fileMatch = headerText.match(/filename="([^"]*)"/i)
+      const typeMatch = headerText.match(/content-type:\s*([^\r\n]+)/i)
+      const name = nameMatch?.[1]
 
       if (name && fileMatch && fileMatch[1]) {
         files.push({
           fieldName: name,
           originalName: fileMatch[1],
-          mimeType: typeMatch?.[1]?.trim() || "",
+          mimeType: typeMatch?.[1]?.trim() || '',
           buffer: body,
-        });
+        })
       } else if (name) {
-        fields[name] = body.toString("utf8");
+        fields[name] = body.toString('utf8')
       }
     }
-
-    cursor = next;
+    cursor = next
   }
+  return { ...fields, files }
+}
 
-  return {
-    ...fields,
-    files,
-  };
-};
+// Raw body capture for multipart, json, urlencoded
+app.use(express.raw({ type: 'multipart/form-data', limit: '100mb' }))
+app.use(express.json({ limit: '50mb' }))
+app.use(express.urlencoded({ extended: true, limit: '50mb' }))
 
-/**
- * Parse request body
- */
-const parseBody = async (req) => {
-  const contentType = req.headers["content-type"] || "";
-
-  const buffer = await readBuffer(req);
-
-  if (!buffer.length) {
-    return {};
-  }
-
-  if (contentType.includes("multipart/form-data")) {
-    return parseMultipart(buffer, contentType);
-  }
-
-  if (
-    contentType.includes(
-      "application/x-www-form-urlencoded",
-    )
-  ) {
-    return Object.fromEntries(
-      new URLSearchParams(
-        buffer.toString("utf8"),
-      ).entries(),
-    );
-  }
-
-  try {
-    return JSON.parse(buffer.toString("utf8"));
-  } catch {
-    throw new Error("Invalid JSON body");
-  }
-};
-
-/**
- * Allowed CORS origin
- */
-const getAllowedOrigin = (origin = "") => {
-  if (!origin) {
-    return env.appUrl;
-  }
-
-  if (env.allowedOrigins.includes(origin)) {
-    return origin;
-  }
-
-  try {
-    const parsed = new URL(origin);
-    const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(
-      parsed.hostname,
-    );
-    if (isLocalHost) {
-      return origin;
-    }
-  } catch {
-    return env.appUrl;
-  }
-
-  return env.appUrl;
-};
-
-/**
- * Serve uploaded files
- */
-const sendUpload = (req, res, pathname) => {
-  const fullPath = publicUploadPath(pathname);
-
-  if (!fullPath || !fs.existsSync(fullPath)) {
-    return false;
-  }
-
-  const ext = path.extname(fullPath).toLowerCase();
-
-  const types = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".svg": "image/svg+xml",
-    ".pdf": "application/pdf",
-    ".mp4": "video/mp4",
-    ".webm": "video/webm",
-    ".ogg": "video/ogg",
-    ".ogv": "video/ogg",
-    ".mov": "video/quicktime",
-    ".zip": "application/zip",
-    ".html": "text/html; charset=utf-8",
-  };
-
-  const headers = {
-    "Content-Type": types[ext] || "application/octet-stream",
-    "Cache-Control": "public, max-age=31536000, immutable",
-    "X-Content-Type-Options": "nosniff",
-  };
-
-  // Prevent XSS from user-uploaded HTML/SVG files
-  if (ext === ".html" || ext === ".svg") {
-    headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
-  }
-
-  res.writeHead(200, headers);
-
-  fs.createReadStream(fullPath).pipe(res);
-
-  return true;
-};
-
-/**
- * Health check
- */
-route("GET", "/api/health", async (ctx) => {
-  await db.ping();
-
-  return sendJson(ctx.res, 200, {
-    success: true,
-    status: "ok",
-    database: "mysql",
-    time: new Date().toISOString(),
-  });
-});
-
-/**
- * Register all application routes
- */
-registerRoutes(route);
-
-/**
- * Main request handler
- */
-const handle = async (req, res) => {
-  try {
-    /**
-     * CORS
-     */
-    res.setHeader(
-      "Access-Control-Allow-Origin",
-      getAllowedOrigin(req.headers.origin),
-    );
-
-    res.setHeader("Vary", "Origin");
-
-    res.setHeader(
-      "Access-Control-Allow-Credentials",
-      "true",
-    );
-
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization",
-    );
-
-    res.setHeader(
-      "Access-Control-Allow-Methods",
-      "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-    );
-
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "DENY");
-    res.setHeader("X-XSS-Protection", "1; mode=block");
-
-    /**
-     * OPTIONS / CORS preflight
-     */
-    if (req.method === "OPTIONS") {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
-    const url = new URL(
-      req.url || "/",
-      "http://localhost",
-    );
-
-    /**
-     * Static uploads
-     */
-    if (
-      req.method === "GET" &&
-      sendUpload(req, res, url.pathname)
-    ) {
-      return;
-    }
-
-    /**
-     * Find route
-     */
-    const found = routes.find(
-      (item) =>
-        item.method === req.method &&
-        match(url.pathname, item.pattern),
-    );
-
-    if (!found) {
-      return fail(
-        res,
-        404,
-        `Route not found: ${req.method} ${url.pathname}`,
-      );
-    }
-
-    /**
-     * Parse body
-     */
-    let body = {};
-
+// Format req.body uniformly
+app.use((req, res, next) => {
+  const contentType = req.headers['content-type'] || ''
+  if (contentType.includes('multipart/form-data') && Buffer.isBuffer(req.body)) {
     try {
-      body = await parseBody(req);
-    } catch (error) {
-      return fail(
-        res,
-        400,
-        error.message || "Invalid request body",
-      );
+      req.body = parseMultipart(req.body, contentType)
+    } catch (e) {
+      return fail(res, 400, 'Invalid multipart request')
+    }
+  }
+  next()
+})
+
+// ─── Health Check Endpoint ────────────────────────────────────────────────────
+
+app.get('/api/health', async (req, res) => {
+  try {
+    await ping()
+    return res.status(200).json({
+      success: true,
+      status: 'ok',
+      database: 'mysql+sequelize',
+      time: new Date().toISOString(),
+    })
+  } catch (err) {
+    return fail(res, 500, 'Database health check failed')
+  }
+})
+
+// ─── Express Router Adapter for existing route handlers ───────────────────────
+
+const router = express.Router()
+
+const adapter = (method, pattern, handlers) => {
+  const m = method.toLowerCase()
+  const list = Array.isArray(handlers) ? handlers : [handlers]
+
+  // Express pattern support (:id works natively)
+  const expressHandlers = list.map((fn) => async (req, res, next) => {
+    // URLSearchParams shim for existing ctx.query.get('key')
+    const searchParams = new URLSearchParams()
+    for (const [k, v] of Object.entries(req.query || {})) {
+      if (Array.isArray(v)) v.forEach((val) => searchParams.append(k, val))
+      else if (v !== undefined) searchParams.set(k, String(v))
     }
 
-    /**
-     * Request context
-     */
     const ctx = {
       req,
       res,
-      params: match(
-        url.pathname,
-        found.pattern,
-      ),
-      query: url.searchParams,
-      body,
-    };
-
-    /**
-     * Execute handlers
-     */
-    let index = -1;
-
-    const next = async () => {
-      index += 1;
-
-      const handler = found.handlers[index];
-
-      if (handler) {
-        return handler(ctx, next);
-      }
-
-      return undefined;
-    };
+      params: req.params,
+      query: searchParams,
+      body: req.body,
+      user: req.user,
+      tokenPayload: req.tokenPayload,
+      env,
+    }
 
     try {
-      await next();
-    } catch (error) {
-      console.error(
-        "[REQUEST ERROR]",
-        error?.stack || error,
-      );
-
-      if (error.code === "ER_ACCESS_DENIED_ERROR") {
-        return fail(
-          res,
-          500,
-          "MySQL access denied. Check DB_USER and DB_PASSWORD.",
-        );
+      // If handler takes 2 params (middleware style fn(ctx, next))
+      if (fn.length >= 2) {
+        return await fn(ctx, next)
       }
-
-      if (error.code === "ER_BAD_DB_ERROR") {
-        return fail(
-          res,
-          500,
-          "MySQL database not found. Check DB_NAME.",
-        );
-      }
-
-      if (error.code === "ECONNREFUSED") {
-        return fail(
-          res,
-          500,
-          "MySQL connection refused. Check DB_HOST and DB_PORT.",
-        );
-      }
-
-      return fail(
-        res,
-        500,
-        "Internal server error",
-        process.env.NODE_ENV !== "production"
-          ? error.message
-          : undefined,
-      );
+      return await fn(ctx)
+    } catch (err) {
+      next(err)
     }
-  } catch (error) {
-    console.error(
-      "[UNHANDLED REQUEST ERROR]",
-      error?.stack || error,
-    );
+  })
 
-    if (!res.headersSent) {
-      return fail(
-        res,
-        500,
-        "Internal server error",
-      );
-    }
-
-    res.end();
+  if (typeof router[m] === 'function') {
+    router[m](pattern, ...expressHandlers)
   }
-};
+}
 
-/**
- * Create HTTP server
- */
-const createServer = () => {
-  const server = http.createServer(handle);
+// Register all modular routes
+registerRoutes(adapter)
+app.use(router)
 
-  server.on("error", (error) => {
-    console.error(
-      "[SERVER ERROR]",
-      error?.stack || error,
-    );
-  });
+// ─── Global 404 & Error Handling ──────────────────────────────────────────────
 
-  return server;
-};
+app.use((req, res) => {
+  fail(res, 404, `Route not found: ${req.method} ${req.path}`)
+})
 
-/**
- * Start server
- */
+app.use((err, req, res, next) => {
+  console.error('[EXPRESS ERROR]', err?.stack || err)
+  if (res.headersSent) return next(err)
+
+  if (err.code === 'ER_ACCESS_DENIED_ERROR') {
+    return fail(res, 500, 'MySQL access denied. Check DB_USER and DB_PASSWORD.')
+  }
+  if (err.code === 'ER_BAD_DB_ERROR') {
+    return fail(res, 500, 'MySQL database not found. Check DB_NAME.')
+  }
+  if (err.code === 'ECONNREFUSED') {
+    return fail(res, 500, 'MySQL connection refused. Check DB_HOST and DB_PORT.')
+  }
+
+  return fail(res, 500, 'Internal server error', process.env.NODE_ENV !== 'production' ? err.message : undefined)
+})
+
+// ─── Start Server ─────────────────────────────────────────────────────────────
+
 const startServer = () => {
-  const port = Number(
-    process.env.PORT || env.port || 3000,
-  );
+  const port = Number(process.env.PORT || env.port || 5000)
+  const server = http.createServer(app)
 
-  if (!Number.isInteger(port) || port <= 0) {
-    throw new Error(
-      `Invalid PORT configuration: ${port}`,
-    );
-  }
+  server.listen(port, '0.0.0.0', async () => {
+    console.log(`LMS Express backend running on port ${port}`)
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`)
 
-  const server = createServer();
+    try {
+      await ping()
+      console.log(`MySQL & Sequelize connected: ${env.db.database}@${env.db.host}:${env.db.port}`)
+    } catch (error) {
+      console.error('Backend started but MySQL/Sequelize connection failed:', error?.message || error)
+    }
+  })
 
-  server.listen(
-    port,
-    "0.0.0.0",
-    async () => {
-      console.log(
-        `LMS backend running on port ${port}`,
-      );
+  return server
+}
 
-      console.log(
-        `Environment: ${
-          process.env.NODE_ENV || "development"
-        }`,
-      );
+// Process-level error handling
+process.on('uncaughtException', (error) => {
+  console.error('[UNCAUGHT EXCEPTION]', error?.stack || error)
+})
 
-      try {
-        await db.ping();
+process.on('unhandledRejection', (reason) => {
+  console.error('[UNHANDLED REJECTION]', reason?.stack || reason)
+})
 
-        console.log(
-          `MySQL connected: ${env.db.database}@${env.db.host}:${env.db.port}`,
-        );
-      } catch (error) {
-        console.error(
-          "Backend started but MySQL connection failed:",
-        );
+startServer()
 
-        console.error(
-          error?.stack || error?.message || error,
-        );
-      }
-    },
-  );
-
-  return server;
-};
-
-/**
- * Process-level error logging
- */
-process.on("uncaughtException", (error) => {
-  console.error(
-    "[UNCAUGHT EXCEPTION]",
-    error?.stack || error,
-  );
-});
-
-process.on("unhandledRejection", (reason) => {
-  console.error(
-    "[UNHANDLED REJECTION]",
-    reason?.stack || reason,
-  );
-});
-
-/**
- * DIRECT START
- *
- * Plesk Startup File:
- * src/index.js
- */
-startServer();
+module.exports = app

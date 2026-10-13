@@ -9,7 +9,7 @@ const courseModel = require('../models/course.model')
 const paymentModel = require('../models/payment.model')
 const statsModel = require('../models/stats.model')
 const { sendMail } = require('../services/mail')
-const env = require('../config/config')
+const env = require('../config/db').env
 
 const createCoach = async (ctx) => {
   const body = ctx.body || {}

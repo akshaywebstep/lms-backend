@@ -1,5 +1,5 @@
 const crypto = require('crypto')
-const env = require('../config/config')
+const env = require('../config/db').env
 const { makeId } = require('../utils/id')
 
 const b64 = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
