@@ -69,6 +69,30 @@ const EmailConfig = sequelize.define(
     variables: {
       type: DataTypes.TEXT,
       allowNull: true,
+      get() {
+        const raw = this.getDataValue('variables')
+        if (!raw) return []
+        if (Array.isArray(raw)) return raw
+        if (typeof raw === 'string') {
+          try {
+            const parsed = JSON.parse(raw)
+            if (Array.isArray(parsed)) return parsed
+            return [parsed]
+          } catch {
+            return raw.split(',').map((s) => s.trim()).filter(Boolean)
+          }
+        }
+        return []
+      },
+      set(val) {
+        if (!val) {
+          this.setDataValue('variables', null)
+        } else if (Array.isArray(val) || typeof val === 'object') {
+          this.setDataValue('variables', JSON.stringify(val))
+        } else {
+          this.setDataValue('variables', val)
+        }
+      },
     },
     to: {
       type: DataTypes.TEXT,
