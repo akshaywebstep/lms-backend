@@ -1,11 +1,11 @@
 'use strict'
 
-const { User, UserProfile } = require('./User.model')
-const { Course, Lesson, LessonTopic } = require('./Course.model')
-const { CourseRequirement, CourseOutcome, CourseMasterOption } = require('./CourseMeta.model')
-const { Quiz, QuizQuestion, Assignment } = require('./Assessment.model')
-const { Enrollment, Payment, Notification } = require('./Enrollment.model')
-const { EmailConfig, PlatformSetting, Upload, Certificate } = require('./System.model')
+const { User, UserProfile } = require('./schema/User.model')
+const { Course, Lesson, LessonTopic } = require('./schema/Course.model')
+const { CourseRequirement, CourseOutcome, CourseMasterOption } = require('./schema/CourseMeta.model')
+const { Quiz, QuizQuestion, Assignment } = require('./schema/Assessment.model')
+const { Enrollment, Payment, Notification } = require('./schema/Enrollment.model')
+const { EmailConfig, PlatformSetting, Upload, Certificate } = require('./schema/System.model')
 
 module.exports = {
   User,
