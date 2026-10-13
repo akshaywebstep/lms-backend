@@ -1,6 +1,6 @@
 'use strict'
 
-const { Course, Lesson, LessonTopic, User, CourseRequirement, CourseOutcome } = require('../models/sequelize')
+const { Course, Lesson, LessonTopic, User, CourseRequirement, CourseOutcome } = require('../models')
 const courseModel = require('../models/course.model')
 const learningModel = require('../models/learning.model')
 

@@ -1,179 +1,64 @@
-'use strict'
+﻿const db = require('../config/db')
+const { recalculateEnrollmentProgress } = require('./progress.model')
 
-const { DataTypes } = require('sequelize')
-const { sequelize } = require('../config/db')
-const { User } = require('./User.model')
-const { Course } = require('./Course.model')
+const refreshProgressRows = async (rows) => {
+  const progressByEnrollment = new Map()
+  for (const row of rows) {
+    const result = await recalculateEnrollmentProgress(row.id)
+    if (result) progressByEnrollment.set(row.id, result.progress)
+  }
+  return rows.map((row) => ({
+    ...row,
+    progress: progressByEnrollment.has(row.id) ? progressByEnrollment.get(row.id) : row.progress,
+  }))
+}
 
-const Enrollment = sequelize.define('Enrollment', {
-  id: {
-    type: DataTypes.STRING(64),
-    primaryKey: true,
-  },
-  student_id: {
-    type: DataTypes.STRING(64),
-    allowNull: false,
-  },
-  coach_id: {
-    type: DataTypes.STRING(64),
-    allowNull: false,
-  },
-  course_id: {
-    type: DataTypes.STRING(64),
-    allowNull: false,
-  },
-  payment_id: {
-    type: DataTypes.STRING(64),
-    allowNull: true,
-  },
-  amount: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: false,
-    defaultValue: 0.00,
-  },
-  currency: {
-    type: DataTypes.CHAR(3),
-    allowNull: false,
-    defaultValue: 'INR',
-  },
-  status: {
-    type: DataTypes.ENUM('active', 'cancelled', 'completed'),
-    allowNull: false,
-    defaultValue: 'active',
-  },
-  progress: {
-    type: DataTypes.DECIMAL(5, 2),
-    allowNull: false,
-    defaultValue: 0.00,
-  },
-  enrolled_at: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW,
-  },
-  completed_at: {
-    type: DataTypes.DATE,
-    allowNull: true,
-  },
-}, {
-  tableName: 'enrollments',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
-})
+const listForStudent = async (studentId) => {
+  const initialRows = await db.query(
+    `SELECT e.*, c.title AS course_title, c.category, c.price, c.currency AS course_currency,
+            u.name AS coach_name, u.email AS coach_email
+     FROM enrollments e
+     JOIN courses c ON c.id = e.course_id
+     JOIN users u ON u.id = e.coach_id
+     WHERE e.student_id = ? AND e.status = 'active'
+     ORDER BY e.created_at DESC`,
+    [studentId]
+  )
+  const rows = await refreshProgressRows(initialRows)
+  return rows.map((row) => ({
+    enrollment: row,
+    course: {
+      id: row.course_id,
+      title: row.course_title,
+      category: row.category,
+      price: Number(row.price || 0),
+      currency: row.course_currency,
+      coach: { id: row.coach_id, name: row.coach_name, email: row.coach_email },
+    },
+  }))
+}
 
-const Payment = sequelize.define('Payment', {
-  id: {
-    type: DataTypes.STRING(64),
-    primaryKey: true,
-  },
-  order_id: {
-    type: DataTypes.STRING(120),
-    allowNull: false,
-  },
-  provider_payment_id: {
-    type: DataTypes.STRING(160),
-    allowNull: true,
-  },
-  provider: {
-    type: DataTypes.STRING(80),
-    allowNull: false,
-    defaultValue: 'demo',
-  },
-  student_id: {
-    type: DataTypes.STRING(64),
-    allowNull: false,
-  },
-  coach_id: {
-    type: DataTypes.STRING(64),
-    allowNull: false,
-  },
-  course_id: {
-    type: DataTypes.STRING(64),
-    allowNull: false,
-  },
-  amount: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: false,
-  },
-  currency: {
-    type: DataTypes.CHAR(3),
-    allowNull: false,
-    defaultValue: 'INR',
-  },
-  status: {
-    type: DataTypes.ENUM('pending', 'success', 'failed', 'refunded'),
-    allowNull: false,
-    defaultValue: 'pending',
-  },
-  student_details: {
-    type: DataTypes.JSON,
-    allowNull: true,
-  },
-  gateway_response: {
-    type: DataTypes.JSON,
-    allowNull: true,
-  },
-  paid_at: {
-    type: DataTypes.DATE,
-    allowNull: true,
-  },
-}, {
-  tableName: 'payments',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
-})
+const listForCoach = async (coachId) => {
+  const initialRows = await db.query(
+    `SELECT e.*, s.name AS student_name, s.email AS student_email, c.title AS course_title,
+            p.id AS payment_id, p.amount AS payment_amount, p.status AS payment_status
+     FROM enrollments e
+     JOIN users s ON s.id = e.student_id
+     JOIN courses c ON c.id = e.course_id
+     LEFT JOIN payments p ON p.id = e.payment_id
+     WHERE e.coach_id = ?
+     ORDER BY e.created_at DESC`,
+    [coachId]
+  )
+  const rows = await refreshProgressRows(initialRows)
+  return rows.map((row) => ({
+    enrollment: row,
+    student: { id: row.student_id, name: row.student_name, email: row.student_email, role: 'student' },
+    course: { id: row.course_id, title: row.course_title },
+    payment: row.payment_id
+      ? { id: row.payment_id, amount: Number(row.payment_amount || 0), status: row.payment_status }
+      : null,
+  }))
+}
 
-const Notification = sequelize.define('Notification', {
-  id: {
-    type: DataTypes.STRING(64),
-    primaryKey: true,
-  },
-  type: {
-    type: DataTypes.STRING(40),
-    allowNull: false,
-    defaultValue: 'info',
-  },
-  sender_id: {
-    type: DataTypes.STRING(64),
-    allowNull: true,
-  },
-  recipient_id: {
-    type: DataTypes.STRING(64),
-    allowNull: true,
-  },
-  recipient_role: {
-    type: DataTypes.ENUM('superadmin', 'coach', 'student'),
-    allowNull: true,
-  },
-  title: {
-    type: DataTypes.STRING(220),
-    allowNull: false,
-  },
-  message: {
-    type: DataTypes.TEXT,
-    allowNull: false,
-  },
-  is_read: {
-    type: DataTypes.BOOLEAN,
-    allowNull: false,
-    defaultValue: false,
-  },
-  read_at: {
-    type: DataTypes.DATE,
-    allowNull: true,
-  },
-}, {
-  tableName: 'notifications',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: false,
-})
-
-Enrollment.belongsTo(User, { foreignKey: 'student_id', as: 'student' })
-Enrollment.belongsTo(Course, { foreignKey: 'course_id', as: 'course' })
-Payment.belongsTo(User, { foreignKey: 'student_id', as: 'student' })
-Payment.belongsTo(Course, { foreignKey: 'course_id', as: 'course' })
-
-module.exports = { Enrollment, Payment, Notification }
+module.exports = { listForStudent, listForCoach }

@@ -1,6 +1,6 @@
 'use strict'
 
-const { User } = require('../models/sequelize')
+const { User } = require('../models')
 const userModel = require('../models/user.model')
 const sessionModel = require('../models/session.model')
 const { createToken, readToken } = require('./token')

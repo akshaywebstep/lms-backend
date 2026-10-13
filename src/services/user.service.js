@@ -1,6 +1,6 @@
 'use strict'
 
-const { User, UserProfile } = require('../models/sequelize')
+const { User, UserProfile } = require('../models')
 const userModel = require('../models/user.model')
 const { cleanEmail, toPublicUser } = userModel
 
