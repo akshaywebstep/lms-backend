@@ -1,5 +1,5 @@
 
-const { Enrollment, Course, User } = require('../../../models')
+const { Enrollment, Course, User, Lesson, LessonProgress } = require('../../../models')
 
 /**
  * Get all courses a student is enrolled in
@@ -13,34 +13,50 @@ exports.getStudentCourses = async (studentId) => {
         {
           model: Course,
           as: 'course',
-          include: [{ model: User, as: 'coach', attributes: ['id', 'name', 'avatar_url'] }],
+          include: [
+            { model: User, as: 'coach', attributes: ['id', 'name', 'avatar_url'] },
+            { model: Lesson, as: 'lessons', attributes: ['id'] },
+          ],
+        },
+        {
+          model: LessonProgress,
+          as: 'progressList',
+          attributes: ['id', 'lesson_id', 'status'],
         },
       ],
       order: [['created_at', 'DESC']],
     })
 
-    const courses = enrollments.map((e) => ({
-      enrollmentId: e.id,
-      progress: Number(e.progress || 0),
-      status: e.status,
-      enrolledAt: e.enrolled_at,
-      course: e.course
-        ? {
-            id: e.course.id,
-            title: e.course.title,
-            category: e.course.category,
-            difficulty: e.course.difficulty,
-            thumbnailUrl: e.course.thumbnail_url,
-            coach: e.course.coach,
-          }
-        : null,
-      enrollment: {
-        id: e.id,
-        progress: Number(e.progress || 0),
+    const courses = enrollments.map((e) => {
+      const totalLessons = (e.course?.lessons || []).length
+      const completedLessons = (e.progressList || []).filter((p) => p.status === 'completed').length
+      const calcProgress = totalLessons > 0 ? Math.min(100, Math.round((completedLessons / totalLessons) * 100)) : 0
+      const progress = Number(e.progress) > 0 ? Number(e.progress) : calcProgress
+
+      return {
+        enrollmentId: e.id,
+        progress,
         status: e.status,
         enrolledAt: e.enrolled_at,
-      },
-    }))
+        course: e.course
+          ? {
+              id: e.course.id,
+              title: e.course.title,
+              category: e.course.category,
+              difficulty: e.course.difficulty,
+              thumbnailUrl: e.course.thumbnail_url,
+              coach: e.course.coach,
+              lessonsCount: totalLessons,
+            }
+          : null,
+        enrollment: {
+          id: e.id,
+          progress,
+          status: e.status,
+          enrolledAt: e.enrolled_at,
+        },
+      }
+    })
 
     return {
       status: true,

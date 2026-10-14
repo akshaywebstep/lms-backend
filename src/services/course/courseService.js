@@ -11,6 +11,7 @@ const {
   User,
   UserProfile,
   Enrollment,
+  LessonProgress,
 } = require('../../models')
 const { makeId } = require('../../utils/id')
 const { Op } = require('sequelize')
@@ -193,15 +194,50 @@ class CourseService {
         { model: CourseRequirement, as: 'requirementsList' },
         { model: CourseOutcome, as: 'outcomesList' },
         { model: Lesson, as: 'lessons' },
-        { model: Enrollment, as: 'enrollments', attributes: ['id', 'student_id'] },
+        {
+          model: Enrollment,
+          as: 'enrollments',
+          attributes: ['id', 'student_id', 'status', 'progress', 'enrolled_at', 'completed_at'],
+          include: [
+            {
+              model: LessonProgress,
+              as: 'progressList',
+              attributes: ['id', 'lesson_id', 'status'],
+            },
+          ],
+        },
       ],
       order: [['created_at', 'DESC']],
     })
 
     return courses.map((c) => {
       const f = formatCourse(c)
-      const isEnrolled = (c.enrollments || []).some((e) => e.student_id === studentId)
-      return { ...f, isEnrolled }
+      const myEnrollment = (c.enrollments || []).find((e) => e.student_id === studentId)
+      const isEnrolled = Boolean(myEnrollment)
+      let progress = 0
+      let enrollment = null
+
+      if (myEnrollment) {
+        const totalLessons = (c.lessons || []).length
+        const completedLessons = (myEnrollment.progressList || []).filter((p) => p.status === 'completed').length
+        const calcProgress = totalLessons > 0 ? Math.min(100, Math.round((completedLessons / totalLessons) * 100)) : 0
+        progress = Number(myEnrollment.progress) > 0 ? Number(myEnrollment.progress) : calcProgress
+
+        enrollment = {
+          id: myEnrollment.id,
+          status: myEnrollment.status,
+          progress,
+          enrolledAt: myEnrollment.enrolled_at,
+          completedAt: myEnrollment.completed_at,
+        }
+      }
+
+      return {
+        ...f,
+        isEnrolled,
+        enrollment,
+        progress,
+      }
     })
   }
 
