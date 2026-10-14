@@ -1,11 +1,8 @@
-'use strict'
 
 const dashboardController = require('./dashboard/dashboardController')
 const courseController = require('./courses/courseController')
 const certificateController = require('./certificates/certificateController')
 
-module.exports = {
-  dashboard: dashboardController.dashboard,
-  myCourses: courseController.myCourses,
-  certificates: certificateController.certificates,
-}
+exports.dashboard = dashboardController.dashboard
+exports.myCourses = courseController.myCourses
+exports.certificates = certificateController.certificates

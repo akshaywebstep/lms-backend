@@ -1,6 +1,5 @@
-'use strict'
 
-const StudentDashboardService = require('../../../services/student/dashboard/studentDashboardService')
+const studentDashboardService = require('../../../services/student/dashboard/studentDashboardService')
 
 /**
  * 1. Get Student Dashboard
@@ -10,10 +9,39 @@ const StudentDashboardService = require('../../../services/student/dashboard/stu
 exports.dashboard = async (req, res) => {
   try {
     const studentId = req.user?.id
-    const result = await StudentDashboardService.getStudentDashboard(studentId)
-    return res.status(result.status ? 200 : 500).json(result.status ? result.data : result)
+    if (!studentId) {
+      return res.status(401).json({
+        status: false,
+        success: false,
+        message: 'Unauthorized: Student authentication required.',
+        data: null,
+      })
+    }
+
+    const result = await studentDashboardService.getStudentDashboard(studentId)
+
+    if (!result.status) {
+      return res.status(500).json({
+        status: false,
+        success: false,
+        message: result.message || 'Failed to fetch student dashboard.',
+        data: null,
+      })
+    }
+
+    return res.status(200).json({
+      status: true,
+      success: true,
+      message: 'Student dashboard fetched successfully.',
+      data: result.data,
+    })
   } catch (error) {
     console.error('❌ Error in dashboard controller:', error)
-    return res.status(500).json({ status: false, message: 'Internal server error: ' + error.message })
+    return res.status(500).json({
+      status: false,
+      success: false,
+      message: 'Internal server error: ' + error.message,
+      data: null,
+    })
   }
 }

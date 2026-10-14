@@ -1,4 +1,3 @@
-'use strict'
 
 const { DataTypes } = require('sequelize')
 const { sequelize } = require('../config/db')
@@ -26,14 +25,20 @@ const Payment = sequelize.define(
     student_id: {
       type: DataTypes.STRING(64),
       allowNull: false,
+      references: { model: 'users', key: 'id' },
+      onDelete: 'CASCADE',
     },
     coach_id: {
       type: DataTypes.STRING(64),
       allowNull: false,
+      references: { model: 'users', key: 'id' },
+      onDelete: 'CASCADE',
     },
     course_id: {
       type: DataTypes.STRING(64),
       allowNull: false,
+      references: { model: 'courses', key: 'id' },
+      onDelete: 'CASCADE',
     },
     amount: {
       type: DataTypes.DECIMAL(10, 2),

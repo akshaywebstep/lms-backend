@@ -1,4 +1,3 @@
-'use strict'
 
 const { DataTypes } = require('sequelize')
 const { sequelize } = require('../config/db')
@@ -13,6 +12,8 @@ const Course = sequelize.define(
     coach_id: {
       type: DataTypes.STRING(64),
       allowNull: false,
+      references: { model: 'users', key: 'id' },
+      onDelete: 'RESTRICT',
     },
     title: {
       type: DataTypes.STRING(220),
@@ -40,14 +41,20 @@ const Course = sequelize.define(
     category_id: {
       type: DataTypes.STRING(64),
       allowNull: true,
+      references: { model: 'course_master_options', key: 'id' },
+      onDelete: 'SET NULL',
     },
     difficulty_id: {
       type: DataTypes.STRING(64),
       allowNull: true,
+      references: { model: 'course_master_options', key: 'id' },
+      onDelete: 'SET NULL',
     },
     language_id: {
       type: DataTypes.STRING(64),
       allowNull: true,
+      references: { model: 'course_master_options', key: 'id' },
+      onDelete: 'SET NULL',
     },
     description: {
       type: DataTypes.TEXT,

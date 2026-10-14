@@ -1,12 +1,17 @@
-'use strict'
-
 const { EmailConfig } = require('../../../models')
 const { ok, created, fail } = require('../../../utils/response')
 const { sendMail } = require('../../../services/mail')
+const { logActivity } = require('../../../services/activity/activityLogService')
 
-const list = async (ctx) => {
+const getReqRes = (a, b) => {
+  if (!b && a?.res) return { req: a.req || a, res: a.res }
+  return { req: a, res: b }
+}
+
+exports.list = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
   const where = {}
-  const moduleParam = ctx.query.get ? ctx.query.get('module') : (ctx.query.module || ctx.req.query?.module)
+  const moduleParam = req.query?.module || (typeof req.query?.get === 'function' ? req.query.get('module') : null)
   if (moduleParam && moduleParam !== 'all') {
     where.module = moduleParam
   }
@@ -14,62 +19,118 @@ const list = async (ctx) => {
     where,
     order: [['id', 'ASC']],
   })
-  return ok(ctx.res, { emailConfigs: configs, templates: configs })
+  return ok(res, { emailConfigs: configs, templates: configs }, 'Email configs fetched successfully.')
 }
 
-const getById = async (ctx) => {
-  const config = await EmailConfig.findByPk(ctx.params.id)
-  if (!config) return fail(ctx.res, 404, 'Email template not found')
-  return ok(ctx.res, { emailConfig: config, template: config })
+exports.getById = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const config = await EmailConfig.findByPk(req.params.id)
+  if (!config) return fail(res, 404, 'Email template not found')
+  return ok(res, { emailConfig: config, template: config }, 'Email template fetched.')
 }
 
-const create = async (ctx) => {
-  if (!ctx.body.module || !ctx.body.action || !ctx.body.subject) {
-    return fail(ctx.res, 400, 'Module, action and subject are required')
+exports.create = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  if (!req.body?.module || !req.body?.action || !req.body?.subject) {
+    return fail(res, 400, 'Module, action and subject are required')
   }
-  const config = await EmailConfig.create(ctx.body)
-  return created(ctx.res, { emailConfig: config, template: config })
+  const config = await EmailConfig.create(req.body)
+
+  await logActivity({
+    req,
+    userId: req.user?.id,
+    role: req.user?.role || 'admin',
+    action: 'CREATE_EMAIL_TEMPLATE',
+    module: 'email_templates',
+    description: `Admin created email template '${config.module}/${config.action}'`,
+    status: 'success',
+    metadata: { id: config.id, module: config.module, action: config.action, subject: config.subject },
+  })
+
+  return created(res, { emailConfig: config, template: config }, 'Email template created.')
 }
 
-const update = async (ctx) => {
-  const config = await EmailConfig.findByPk(ctx.params.id)
-  if (!config) return fail(ctx.res, 404, 'Email template not found')
-  await config.update(ctx.body)
-  return ok(ctx.res, { emailConfig: config, template: config })
+exports.update = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const config = await EmailConfig.findByPk(req.params.id)
+  if (!config) return fail(res, 404, 'Email template not found')
+  await config.update(req.body)
+
+  await logActivity({
+    req,
+    userId: req.user?.id,
+    role: req.user?.role || 'admin',
+    action: 'UPDATE_EMAIL_TEMPLATE',
+    module: 'email_templates',
+    description: `Admin updated email template '${config.module}/${config.action}'`,
+    status: 'success',
+    metadata: { id: config.id, module: config.module, action: config.action },
+  })
+
+  return ok(res, { emailConfig: config, template: config }, 'Email template updated.')
 }
 
-const reset = async (ctx) => {
-  const config = await EmailConfig.findByPk(ctx.params.id)
-  if (!config) return fail(ctx.res, 404, 'Email template not found')
-  return ok(ctx.res, { emailConfig: config, template: config })
+exports.reset = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const config = await EmailConfig.findByPk(req.params.id)
+  if (!config) return fail(res, 404, 'Email template not found')
+
+  await logActivity({
+    req,
+    userId: req.user?.id,
+    role: req.user?.role || 'admin',
+    action: 'RESET_EMAIL_TEMPLATE',
+    module: 'email_templates',
+    description: `Admin reset email template '${config.module}/${config.action}'`,
+    status: 'success',
+    metadata: { id: config.id },
+  })
+
+  return ok(res, { emailConfig: config, template: config }, 'Email template reset.')
 }
 
-const remove = async (ctx) => {
-  const config = await EmailConfig.findByPk(ctx.params.id)
-  if (!config) return fail(ctx.res, 404, 'Email template not found')
+exports.remove = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const config = await EmailConfig.findByPk(req.params.id)
+  if (!config) return fail(res, 404, 'Email template not found')
   await config.destroy()
-  return ok(ctx.res, { success: true })
+
+  await logActivity({
+    req,
+    userId: req.user?.id,
+    role: req.user?.role || 'admin',
+    action: 'DELETE_EMAIL_TEMPLATE',
+    module: 'email_templates',
+    description: `Admin deleted email template '${config.module}/${config.action}'`,
+    status: 'success',
+    metadata: { id: req.params.id },
+  })
+
+  return ok(res, { success: true }, 'Email template deleted.')
 }
 
-const testSend = async (ctx) => {
-  const config = await EmailConfig.findByPk(ctx.params.id)
-  if (!config) return fail(ctx.res, 404, 'Email template not found')
-  const to = ctx.body.to || ctx.user.email
+exports.testSend = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const config = await EmailConfig.findByPk(req.params.id)
+  if (!config) return fail(res, 404, 'Email template not found')
+  const to = req.body?.to || req.user?.email
   await sendMail({
     module: config.module,
     action: config.action,
     to,
-    vars: ctx.body.vars || {},
+    vars: req.body?.vars || {},
   }).catch(() => {})
-  return ok(ctx.res, { success: true, message: `Test email sent to ${to}` })
-}
 
-module.exports = {
-  list,
-  getById,
-  create,
-  update,
-  reset,
-  remove,
-  testSend,
+  await logActivity({
+    req,
+    userId: req.user?.id,
+    role: req.user?.role || 'admin',
+    action: 'TEST_EMAIL_TEMPLATE',
+    module: 'email_templates',
+    description: `Admin sent test email to '${to}' for '${config.module}/${config.action}'`,
+    status: 'success',
+    metadata: { to, templateId: config.id },
+  })
+
+  return ok(res, { success: true, message: `Test email sent to ${to}` }, `Test email sent to ${to}`)
 }

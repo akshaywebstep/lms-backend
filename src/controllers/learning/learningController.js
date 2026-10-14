@@ -1,191 +1,385 @@
-'use strict'
-
 const { ok, created, fail } = require('../../utils/response')
 const LearningService = require('../../services/learning/learning.service')
 const AssessmentService = require('../../services/learning/assessment.service')
-const { Certificate, Upload, PlatformSetting } = require('../../models')
+const { Certificate, Upload } = require('../../models')
 const { makeId } = require('../../utils/id')
+const { logActivity } = require('../../services/activity/activityLogService')
+
+const getReqRes = (a, b) => {
+  if (!b && a?.res) return { req: a.req || a, res: a.res }
+  return { req: a, res: b }
+}
+
+const getQuery = (req, key) => {
+  if (req.query && req.query[key] !== undefined) return req.query[key]
+  if (typeof req.query?.get === 'function') return req.query.get(key)
+  return null
+}
 
 // Lessons
-const listCoachLessons = async (ctx) =>
-  ok(ctx.res, { lessons: await LearningService.listLessonsForCoach(ctx.user.id, { courseId: ctx.query.get('courseId') }) })
-
-const createCoachLesson = async (ctx) => {
-  if (!ctx.body.courseId || !ctx.body.title) return fail(ctx.res, 400, 'Course and lesson title are required')
-  const lesson = await LearningService.createLesson(ctx.user.id, ctx.body)
-  if (!lesson) return fail(ctx.res, 404, 'Course not found for this coach')
-  return created(ctx.res, { lesson })
+exports.listCoachLessons = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const courseId = getQuery(req, 'courseId')
+  const lessons = await LearningService.listLessonsForCoach(req.user.id, { courseId })
+  return ok(res, { lessons }, 'Coach lessons fetched successfully.')
 }
 
-const updateCoachLesson = async (ctx) => {
-  const lesson = await LearningService.updateLesson(ctx.params.id, ctx.user.id, ctx.body)
-  if (!lesson) return fail(ctx.res, 404, 'Lesson not found')
-  return ok(ctx.res, { lesson })
+exports.getCoachLesson = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const isPrivileged = req.user?.role === 'super_admin' || req.user?.role === 'admin'
+  const lesson = await LearningService.getLessonDetail(req.params.id, isPrivileged ? null : req.user?.id)
+  if (!lesson) return fail(res, 404, 'Lesson not found')
+  return ok(res, { lesson }, 'Lesson details fetched successfully.')
 }
 
-const deleteCoachLesson = async (ctx) => {
-  const removed = await LearningService.removeLesson(ctx.params.id, ctx.user.id)
-  if (!removed) return fail(ctx.res, 404, 'Lesson not found')
-  return ok(ctx.res, { success: true })
+exports.createCoachLesson = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  if (!req.body?.courseId || !req.body?.title) return fail(res, 400, 'Course and lesson title are required')
+  const lesson = await LearningService.createLesson(req.user.id, req.body)
+  if (!lesson) return fail(res, 404, 'Course not found for this coach')
+
+  await logActivity({
+    req,
+    userId: req.user.id,
+    role: req.user.role,
+    action: 'CREATE_LESSON',
+    module: 'lessons',
+    description: `Coach created lesson '${lesson.title || req.body.title}'`,
+    status: 'success',
+    metadata: { lessonId: lesson.id, courseId: req.body.courseId, title: lesson.title },
+  })
+
+  return created(res, { lesson }, 'Lesson created successfully.')
+}
+
+exports.updateCoachLesson = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const lesson = await LearningService.updateLesson(req.params.id, req.user.id, req.body)
+  if (!lesson) return fail(res, 404, 'Lesson not found')
+
+  await logActivity({
+    req,
+    userId: req.user.id,
+    role: req.user.role,
+    action: 'UPDATE_LESSON',
+    module: 'lessons',
+    description: `Coach updated lesson '${lesson.title || req.params.id}'`,
+    status: 'success',
+    metadata: { lessonId: req.params.id },
+  })
+
+  return ok(res, { lesson }, 'Lesson updated successfully.')
+}
+
+exports.deleteCoachLesson = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const removed = await LearningService.removeLesson(req.params.id, req.user.id)
+  if (!removed) return fail(res, 404, 'Lesson not found')
+
+  await logActivity({
+    req,
+    userId: req.user.id,
+    role: req.user.role,
+    action: 'DELETE_LESSON',
+    module: 'lessons',
+    description: `Coach deleted lesson ID ${req.params.id}`,
+    status: 'success',
+    metadata: { lessonId: req.params.id },
+  })
+
+  return ok(res, { success: true }, 'Lesson deleted successfully.')
 }
 
 // Topics
-const listCoachTopics = async (ctx) =>
-  ok(ctx.res, {
-    topics: await LearningService.listTopicsForCoach(ctx.user.id, {
-      lessonId: ctx.query.get('lessonId'),
-      courseId: ctx.query.get('courseId'),
-    }),
+exports.listCoachTopics = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const lessonId = getQuery(req, 'lessonId')
+  const courseId = getQuery(req, 'courseId')
+  const topics = await LearningService.listTopicsForCoach(req.user.id, { lessonId, courseId })
+  return ok(res, { topics }, 'Coach topics fetched successfully.')
+}
+
+exports.createCoachTopic = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  if (!req.body?.lessonId || !(req.body?.title || req.body?.name)) {
+    return fail(res, 400, 'Lesson and topic title are required')
+  }
+  const topic = await LearningService.createTopic(req.user.id, req.body)
+  if (!topic) return fail(res, 404, 'Lesson not found for this coach')
+
+  await logActivity({
+    req,
+    userId: req.user.id,
+    role: req.user.role,
+    action: 'CREATE_TOPIC',
+    module: 'topics',
+    description: `Coach created topic '${topic.title || topic.name || req.body.title}'`,
+    status: 'success',
+    metadata: { topicId: topic.id, lessonId: req.body.lessonId },
   })
 
-const createCoachTopic = async (ctx) => {
-  if (!ctx.body.lessonId || !(ctx.body.title || ctx.body.name)) return fail(ctx.res, 400, 'Lesson and topic title are required')
-  const topic = await LearningService.createTopic(ctx.user.id, ctx.body)
-  if (!topic) return fail(ctx.res, 404, 'Lesson not found for this coach')
-  return created(ctx.res, { topic })
+  return created(res, { topic }, 'Topic created successfully.')
 }
 
-const updateCoachTopic = async (ctx) => {
-  const topic = await LearningService.updateTopic(ctx.params.id, ctx.user.id, ctx.body)
-  if (!topic) return fail(ctx.res, 404, 'Topic not found')
-  return ok(ctx.res, { topic })
+exports.updateCoachTopic = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const topic = await LearningService.updateTopic(req.params.id, req.user.id, req.body)
+  if (!topic) return fail(res, 404, 'Topic not found')
+
+  await logActivity({
+    req,
+    userId: req.user.id,
+    role: req.user.role,
+    action: 'UPDATE_TOPIC',
+    module: 'topics',
+    description: `Coach updated topic '${topic.title || topic.name || req.params.id}'`,
+    status: 'success',
+    metadata: { topicId: req.params.id },
+  })
+
+  return ok(res, { topic }, 'Topic updated successfully.')
 }
 
-const deleteCoachTopic = async (ctx) => {
-  const removed = await LearningService.removeTopic(ctx.params.id, ctx.user.id)
-  if (!removed) return fail(ctx.res, 404, 'Topic not found')
-  return ok(ctx.res, { success: true })
+exports.deleteCoachTopic = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const removed = await LearningService.removeTopic(req.params.id, req.user.id)
+  if (!removed) return fail(res, 404, 'Topic not found')
+
+  await logActivity({
+    req,
+    userId: req.user.id,
+    role: req.user.role,
+    action: 'DELETE_TOPIC',
+    module: 'topics',
+    description: `Coach deleted topic ID ${req.params.id}`,
+    status: 'success',
+    metadata: { topicId: req.params.id },
+  })
+
+  return ok(res, { success: true }, 'Topic deleted successfully.')
 }
 
 // Quizzes
-const listCoachQuizzes = async (ctx) =>
-  ok(ctx.res, { quizzes: await AssessmentService.listQuizzesForCoach(ctx.user.id, { courseId: ctx.query.get('courseId') }) })
-
-const getCoachQuiz = async (ctx) => {
-  const quiz = await AssessmentService.getQuizDetail(ctx.params.id)
-  if (!quiz) return fail(ctx.res, 404, 'Quiz not found')
-  return ok(ctx.res, { quiz })
+exports.listCoachQuizzes = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const courseId = getQuery(req, 'courseId')
+  const quizzes = await AssessmentService.listQuizzesForCoach(req.user.id, { courseId })
+  return ok(res, { quizzes }, 'Coach quizzes fetched successfully.')
 }
 
-const createCoachQuiz = async (ctx) => {
-  if (!ctx.body.courseId || !ctx.body.title) return fail(ctx.res, 400, 'Course ID and quiz title are required')
-  const quiz = await AssessmentService.createQuiz(ctx.user.id, ctx.body)
-  if (!quiz) return fail(ctx.res, 404, 'Course not found')
-  return created(ctx.res, { quiz })
+exports.getCoachQuiz = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const quiz = await AssessmentService.getQuizDetail(req.params.id)
+  if (!quiz) return fail(res, 404, 'Quiz not found')
+  return ok(res, { quiz }, 'Quiz details fetched successfully.')
 }
 
-const updateCoachQuiz = async (ctx) => {
-  const quiz = await AssessmentService.updateQuiz(ctx.params.id, ctx.user.id, ctx.body)
-  if (!quiz) return fail(ctx.res, 404, 'Quiz not found')
-  return ok(ctx.res, { quiz })
+exports.createCoachQuiz = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  if (!req.body?.courseId || !req.body?.title) return fail(res, 400, 'Course ID and quiz title are required')
+  const quiz = await AssessmentService.createQuiz(req.user.id, req.body)
+  if (!quiz) return fail(res, 404, 'Course not found')
+
+  await logActivity({
+    req,
+    userId: req.user.id,
+    role: req.user.role,
+    action: 'CREATE_QUIZ',
+    module: 'quizzes',
+    description: `Coach created quiz '${quiz.title || req.body.title}'`,
+    status: 'success',
+    metadata: { quizId: quiz.id, courseId: req.body.courseId },
+  })
+
+  return created(res, { quiz }, 'Quiz created successfully.')
 }
 
-const deleteCoachQuiz = async (ctx) => {
-  const removed = await AssessmentService.removeQuiz(ctx.params.id, ctx.user.id)
-  if (!removed) return fail(ctx.res, 404, 'Quiz not found')
-  return ok(ctx.res, { success: true })
+exports.updateCoachQuiz = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const quiz = await AssessmentService.updateQuiz(req.params.id, req.user.id, req.body)
+  if (!quiz) return fail(res, 404, 'Quiz not found')
+
+  await logActivity({
+    req,
+    userId: req.user.id,
+    role: req.user.role,
+    action: 'UPDATE_QUIZ',
+    module: 'quizzes',
+    description: `Coach updated quiz '${quiz.title || req.params.id}'`,
+    status: 'success',
+    metadata: { quizId: req.params.id },
+  })
+
+  return ok(res, { quiz }, 'Quiz updated successfully.')
+}
+
+exports.deleteCoachQuiz = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const removed = await AssessmentService.removeQuiz(req.params.id, req.user.id)
+  if (!removed) return fail(res, 404, 'Quiz not found')
+
+  await logActivity({
+    req,
+    userId: req.user.id,
+    role: req.user.role,
+    action: 'DELETE_QUIZ',
+    module: 'quizzes',
+    description: `Coach deleted quiz ID ${req.params.id}`,
+    status: 'success',
+    metadata: { quizId: req.params.id },
+  })
+
+  return ok(res, { success: true }, 'Quiz deleted successfully.')
 }
 
 // Materials
-const listCoachMaterials = async (ctx) => {
+exports.listCoachMaterials = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
   const uploads = await Upload.findAll({
-    where: { owner_id: ctx.user.id },
+    where: { owner_id: req.user.id },
     order: [['created_at', 'DESC']],
   })
-  return ok(ctx.res, { materials: uploads, uploads })
+  return ok(res, { materials: uploads, uploads }, 'Materials fetched successfully.')
 }
 
-const createCoachMaterial = async (ctx) => {
+exports.createCoachMaterial = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
   const upload = await Upload.create({
     id: makeId('mat'),
-    owner_id: ctx.user.id,
-    file_type: ctx.body.fileType || 'document',
-    original_name: ctx.body.originalName || 'file',
-    file_url: ctx.body.fileUrl,
-    mime_type: ctx.body.mimeType || 'application/octet-stream',
-    size_bytes: ctx.body.sizeBytes || 0,
+    owner_id: req.user.id,
+    file_type: req.body?.fileType || 'document',
+    original_name: req.body?.originalName || 'file',
+    file_url: req.body?.fileUrl,
+    mime_type: req.body?.mimeType || 'application/octet-stream',
+    size_bytes: req.body?.sizeBytes || 0,
   })
-  return created(ctx.res, { material: upload, upload })
+
+  await logActivity({
+    req,
+    userId: req.user.id,
+    role: req.user.role,
+    action: 'UPLOAD_MATERIAL',
+    module: 'materials',
+    description: `Coach uploaded learning material '${upload.original_name}'`,
+    status: 'success',
+    metadata: { uploadId: upload.id, fileType: upload.file_type },
+  })
+
+  return created(res, { material: upload, upload }, 'Material uploaded successfully.')
 }
 
-const deleteCoachMaterial = async (ctx) => {
-  await Upload.destroy({ where: { id: ctx.params.id, owner_id: ctx.user.id } })
-  return ok(ctx.res, { success: true })
+exports.deleteCoachMaterial = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  await Upload.destroy({ where: { id: req.params.id, owner_id: req.user.id } })
+
+  await logActivity({
+    req,
+    userId: req.user.id,
+    role: req.user.role,
+    action: 'DELETE_MATERIAL',
+    module: 'materials',
+    description: `Coach deleted learning material ID ${req.params.id}`,
+    status: 'success',
+    metadata: { uploadId: req.params.id },
+  })
+
+  return ok(res, { success: true }, 'Material deleted successfully.')
 }
 
 // Student Learning
-const studentCourseContent = async (ctx) => {
-  const content = await LearningService.getStudentCourseContent(ctx.user.id, ctx.params.courseId)
-  if (!content) return fail(ctx.res, 404, 'Course not found')
-  return ok(ctx.res, content)
+exports.studentCourseContent = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const content = await LearningService.getStudentCourseContent(req.user.id, req.params.courseId)
+  if (!content) return fail(res, 404, 'Course not found')
+  return ok(res, content, 'Student course content fetched.')
 }
 
-const updateStudentLessonProgress = async (ctx) => {
+exports.updateStudentLessonProgress = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
   try {
-    const result = await LearningService.updateStudentLessonProgress(ctx.user.id, ctx.params.id, ctx.body)
-    if (!result) return fail(ctx.res, 404, 'Lesson or enrollment not found')
-    return ok(ctx.res, result)
+    const result = await LearningService.updateStudentLessonProgress(req.user.id, req.params.id, req.body)
+    if (!result) return fail(res, 404, 'Lesson or enrollment not found')
+
+    await logActivity({
+      req,
+      userId: req.user.id,
+      role: req.user.role,
+      action: 'UPDATE_PROGRESS',
+      module: 'learning',
+      description: `Student updated progress on lesson ID ${req.params.id}`,
+      status: 'success',
+      metadata: { lessonId: req.params.id, status: req.body?.status, progress: req.body?.progress },
+    })
+
+    return ok(res, result, 'Lesson progress updated successfully.')
   } catch (err) {
-    return fail(ctx.res, err.status || 400, err.message || 'Progress update failed')
+    return fail(res, err.status || 400, err.message || 'Progress update failed')
   }
 }
 
-const listStudentQuizzes = async (ctx) =>
-  ok(ctx.res, { quizzes: await AssessmentService.listStudentQuizzes(ctx.user.id) })
+exports.listStudentQuizzes = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const quizzes = await AssessmentService.listStudentQuizzes(req.user.id)
+  return ok(res, { quizzes }, 'Student quizzes fetched successfully.')
+}
 
-const attemptStudentQuiz = async (ctx) => {
+exports.attemptStudentQuiz = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
   try {
-    const attempt = await AssessmentService.attemptStudentQuiz(ctx.user.id, ctx.params.id, ctx.body)
-    if (!attempt) return fail(ctx.res, 404, 'Quiz or enrollment not found')
-    return ok(ctx.res, { attempt })
+    const attempt = await AssessmentService.attemptStudentQuiz(req.user.id, req.params.id, req.body)
+    if (!attempt) return fail(res, 404, 'Quiz or enrollment not found')
+
+    await logActivity({
+      req,
+      userId: req.user.id,
+      role: req.user.role,
+      action: 'ATTEMPT_QUIZ',
+      module: 'quizzes',
+      description: `Student attempted quiz ID ${req.params.id} (Score: ${attempt.score ?? 'N/A'})`,
+      status: 'success',
+      metadata: { quizId: req.params.id, score: attempt.score, passed: attempt.passed },
+    })
+
+    return ok(res, { attempt }, 'Quiz attempt processed successfully.')
   } catch (err) {
-    return fail(ctx.res, err.status || 400, err.message || 'Quiz attempt failed')
+    return fail(res, err.status || 400, err.message || 'Quiz attempt failed')
   }
 }
 
-const listStudentAssignments = async (ctx) =>
-  ok(ctx.res, { assignments: await AssessmentService.listStudentAssignments(ctx.user.id) })
+exports.listStudentAssignments = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const assignments = await AssessmentService.listStudentAssignments(req.user.id)
+  return ok(res, { assignments }, 'Student assignments fetched successfully.')
+}
 
-const submitStudentAssignment = async (ctx) => {
+exports.submitStudentAssignment = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
   try {
-    const submission = await AssessmentService.submitStudentAssignment(ctx.user.id, ctx.params.id, ctx.body)
-    if (!submission) return fail(ctx.res, 404, 'Assignment or enrollment not found')
-    return created(ctx.res, { submission })
+    const submission = await AssessmentService.submitStudentAssignment(req.user.id, req.params.id, req.body)
+    if (!submission) return fail(res, 404, 'Assignment or enrollment not found')
+
+    await logActivity({
+      req,
+      userId: req.user.id,
+      role: req.user.role,
+      action: 'SUBMIT_ASSIGNMENT',
+      module: 'assignments',
+      description: `Student submitted assignment ID ${req.params.id}`,
+      status: 'success',
+      metadata: { assignmentId: req.params.id, submissionId: submission.id },
+    })
+
+    return created(res, { submission }, 'Assignment submitted successfully.')
   } catch (err) {
-    return fail(ctx.res, err.status || 400, err.message || 'Assignment submission failed')
+    return fail(res, err.status || 400, err.message || 'Assignment submission failed')
   }
 }
 
-const listStudentCertificates = async (ctx) => {
+exports.listStudentCertificates = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
   const certs = await Certificate.findAll({
-    where: { student_id: ctx.user.id },
+    where: { student_id: req.user.id },
     order: [['issued_at', 'DESC']],
   })
-  return ok(ctx.res, { certificates: certs })
-}
-
-module.exports = {
-  listCoachLessons,
-  createCoachLesson,
-  updateCoachLesson,
-  deleteCoachLesson,
-  listCoachTopics,
-  createCoachTopic,
-  updateCoachTopic,
-  deleteCoachTopic,
-  listCoachQuizzes,
-  getCoachQuiz,
-  createCoachQuiz,
-  updateCoachQuiz,
-  deleteCoachQuiz,
-  listCoachMaterials,
-  createCoachMaterial,
-  deleteCoachMaterial,
-  studentCourseContent,
-  updateStudentLessonProgress,
-  listStudentQuizzes,
-  attemptStudentQuiz,
-  listStudentAssignments,
-  submitStudentAssignment,
-  listStudentCertificates,
+  return ok(res, { certificates: certs }, 'Student certificates fetched successfully.')
 }

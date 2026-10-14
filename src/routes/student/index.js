@@ -1,5 +1,3 @@
-'use strict'
-
 const express = require('express')
 const router = express.Router()
 
@@ -13,50 +11,31 @@ const { ROLES } = require('../../config/constants')
 
 const studentOnly = auth([ROLES.STUDENT])
 
-// Adapter for ctx-style controllers
-const h = (fn) => (req, res, next) => {
-  const searchParams = new URLSearchParams()
-  for (const [k, v] of Object.entries(req.query || {})) {
-    if (Array.isArray(v)) v.forEach((val) => searchParams.append(k, val))
-    else if (v !== undefined) searchParams.set(k, String(v))
-  }
-  const ctx = {
-    req,
-    res,
-    params: req.params,
-    query: searchParams,
-    body: req.body,
-    user: req.user,
-    tokenPayload: req.tokenPayload,
-  }
-  return fn(ctx).catch(next)
-}
-
 // ─── Dashboard Stats & Profile ────────────────────────────────────────────────
 router.get('/stats', studentOnly, studentController.dashboard)
 router.get('/dashboard', studentOnly, studentController.dashboard)
-router.get('/profile', studentOnly, h(profileController.getProfile))
-router.put('/profile', studentOnly, h(profileController.updateProfile))
+router.get('/profile', studentOnly, profileController.getProfile)
+router.put('/profile', studentOnly, profileController.updateProfile)
 
 // ─── Courses & Browsing ───────────────────────────────────────────────────────
-router.get('/courses/browse', studentOnly, h(courseController.browseCourses))
+router.get('/courses/browse', studentOnly, courseController.browseCourses)
 router.get('/courses/enrolled', studentOnly, studentController.myCourses)
 router.get('/courses', studentOnly, studentController.myCourses)
-router.get('/courses/:courseId/content', studentOnly, h(learningController.studentCourseContent))
+router.get('/courses/:courseId/content', studentOnly, learningController.studentCourseContent)
 
 // ─── Progress & Enroll ────────────────────────────────────────────────────────
-router.post('/enroll', studentOnly, h(paymentController.enroll))
+router.post('/enroll', studentOnly, paymentController.enroll)
 router.get('/progress', studentOnly, studentController.dashboard)
-router.patch('/lessons/:id/progress', studentOnly, h(learningController.updateStudentLessonProgress))
-router.post('/lessons/:id/progress', studentOnly, h(learningController.updateStudentLessonProgress))
+router.patch('/lessons/:id/progress', studentOnly, learningController.updateStudentLessonProgress)
+router.post('/lessons/:id/progress', studentOnly, learningController.updateStudentLessonProgress)
 
 // ─── Quizzes & Assignments & Certificates ─────────────────────────────────────
-router.get('/quizzes', studentOnly, h(learningController.listStudentQuizzes))
-router.post('/quizzes/:id/attempts', studentOnly, h(learningController.attemptStudentQuiz))
+router.get('/quizzes', studentOnly, learningController.listStudentQuizzes)
+router.post('/quizzes/:id/attempts', studentOnly, learningController.attemptStudentQuiz)
 
-router.get('/assignments', studentOnly, h(learningController.listStudentAssignments))
-router.post('/assignments/:id/submit', studentOnly, h(learningController.submitStudentAssignment))
+router.get('/assignments', studentOnly, learningController.listStudentAssignments)
+router.post('/assignments/:id/submit', studentOnly, learningController.submitStudentAssignment)
 
-router.get('/certificates', studentOnly, h(learningController.listStudentCertificates))
+router.get('/certificates', studentOnly, learningController.listStudentCertificates)
 
 module.exports = router

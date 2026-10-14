@@ -1,4 +1,3 @@
-'use strict'
 
 const {
   User,
@@ -73,5 +72,11 @@ class UserService {
     return this.findById(userId)
   }
 }
+
+exports.findByEmail = UserService.findByEmail
+exports.findById = UserService.findById
+exports.listByRole = UserService.listByRole
+exports.updateStatus = UserService.updateStatus
+exports.updateProfile = UserService.updateProfile
 
 module.exports = UserService

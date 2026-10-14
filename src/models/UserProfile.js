@@ -1,4 +1,3 @@
-'use strict'
 
 const { DataTypes } = require('sequelize')
 const { sequelize } = require('../config/db')
@@ -9,6 +8,8 @@ const UserProfile = sequelize.define(
     user_id: {
       type: DataTypes.STRING(64),
       primaryKey: true,
+      references: { model: 'users', key: 'id' },
+      onDelete: 'CASCADE',
     },
     phone: {
       type: DataTypes.STRING(40),

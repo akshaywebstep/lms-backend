@@ -1,4 +1,3 @@
-'use strict'
 
 const { sequelize } = require('../config/db')
 
@@ -28,6 +27,7 @@ const Session = require('./Session')
 const RevokedToken = require('./RevokedToken')
 const PasswordOtp = require('./PasswordOtp')
 const ResetToken = require('./ResetToken')
+const ActivityLog = require('./ActivityLog')
 
 // =================== Define Associations =================== //
 
@@ -130,6 +130,10 @@ Upload.belongsTo(User, { foreignKey: 'owner_id', as: 'owner' })
 User.hasMany(Session, { foreignKey: 'user_id', as: 'sessions' })
 Session.belongsTo(User, { foreignKey: 'user_id', as: 'user' })
 
+// 📝 Activity Logs
+User.hasMany(ActivityLog, { foreignKey: 'user_id', as: 'activityLogs' })
+ActivityLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' })
+
 const models = {
   sequelize,
   User,
@@ -157,6 +161,7 @@ const models = {
   RevokedToken,
   PasswordOtp,
   ResetToken,
+  ActivityLog,
 }
 
 module.exports = models

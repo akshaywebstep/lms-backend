@@ -1,35 +1,16 @@
-'use strict'
-
 const express = require('express')
 const router = express.Router()
 
 const adminController = require('../../controllers/admin/adminController')
 const courseController = require('../../controllers/course/courseController')
+const learningController = require('../../controllers/learning/learningController')
 const masterDataController = require('../../controllers/masterData/masterDataController')
 const emailConfigController = require('../../controllers/admin/settings/emailConfigController')
+const activityLogController = require('../../controllers/admin/activityLogController')
 const { auth } = require('../../middleware/auth')
 const { ROLES } = require('../../config/constants')
 
 const adminOnly = auth([ROLES.ADMIN, ROLES.SUPER_ADMIN])
-
-// Adapter for ctx-style controllers
-const h = (fn) => (req, res, next) => {
-  const searchParams = new URLSearchParams()
-  for (const [k, v] of Object.entries(req.query || {})) {
-    if (Array.isArray(v)) v.forEach((val) => searchParams.append(k, val))
-    else if (v !== undefined) searchParams.set(k, String(v))
-  }
-  const ctx = {
-    req,
-    res,
-    params: req.params,
-    query: searchParams,
-    body: req.body,
-    user: req.user,
-    tokenPayload: req.tokenPayload,
-  }
-  return fn(ctx).catch(next)
-}
 
 // ─── Dashboard Stats & Users ──────────────────────────────────────────────────
 router.get('/stats', adminOnly, adminController.stats)
@@ -50,10 +31,11 @@ router.delete('/students/:id', adminOnly, adminController.deleteStudent)
 router.patch('/students/:id/status', adminOnly, adminController.updateStudentStatus)
 
 // ─── Courses Management ───────────────────────────────────────────────────────
-router.get('/courses', adminOnly, h(courseController.allCourses))
-router.get('/courses/:id', adminOnly, h(courseController.adminCourseDetail))
-router.put('/courses/:id', adminOnly, h(courseController.updateAdminCourse))
-router.patch('/courses/:id', adminOnly, h(courseController.updateAdminCourse))
+router.get('/courses', adminOnly, courseController.allCourses)
+router.get('/courses/:id', adminOnly, courseController.adminCourseDetail)
+router.put('/courses/:id', adminOnly, courseController.updateAdminCourse)
+router.patch('/courses/:id', adminOnly, courseController.updateAdminCourse)
+router.get('/lessons/:id', adminOnly, learningController.getCoachLesson)
 
 // ─── Payments & Reports ───────────────────────────────────────────────────────
 router.get('/payments', adminOnly, adminController.payments)
@@ -67,17 +49,20 @@ router.get('/settings', adminOnly, adminController.getPlatformSettings)
 router.put('/settings', adminOnly, adminController.updatePlatformSettings)
 
 // ─── Master Data ──────────────────────────────────────────────────────────────
-router.get('/master-data', adminOnly, h(masterDataController.listAdminAll))
-router.get('/master-data/:type', adminOnly, h(masterDataController.listAdmin))
-router.post('/master-data/:type', adminOnly, h(masterDataController.createAdmin))
-router.put('/master-data/:type/:id', adminOnly, h(masterDataController.updateAdmin))
-router.patch('/master-data/:type/:id', adminOnly, h(masterDataController.updateAdmin))
-router.delete('/master-data/:type/:id', adminOnly, h(masterDataController.deleteAdmin))
+router.get('/master-data', adminOnly, masterDataController.listAdminAll)
+router.get('/master-data/:type', adminOnly, masterDataController.listAdmin)
+router.post('/master-data/:type', adminOnly, masterDataController.createAdmin)
+router.put('/master-data/:type/:id', adminOnly, masterDataController.updateAdmin)
+router.patch('/master-data/:type/:id', adminOnly, masterDataController.updateAdmin)
+router.delete('/master-data/:type/:id', adminOnly, masterDataController.deleteAdmin)
 
 // ─── Email Configs ────────────────────────────────────────────────────────────
-router.get('/email-configs', adminOnly, h(emailConfigController.list))
-router.get('/email-configs/:id', adminOnly, h(emailConfigController.getById))
-router.put('/email-configs/:id', adminOnly, h(emailConfigController.update))
-router.post('/email-configs/:id/test-send', adminOnly, h(emailConfigController.testSend))
+router.get('/email-configs', adminOnly, emailConfigController.list)
+router.get('/email-configs/:id', adminOnly, emailConfigController.getById)
+router.put('/email-configs/:id', adminOnly, emailConfigController.update)
+router.post('/email-configs/:id/test-send', adminOnly, emailConfigController.testSend)
+
+// ─── Activity Logs ────────────────────────────────────────────────────────────
+router.get('/activity-logs', adminOnly, activityLogController.getActivityLogs)
 
 module.exports = router

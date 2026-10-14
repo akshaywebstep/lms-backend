@@ -1,4 +1,3 @@
-'use strict'
 
 const {
   Course,
@@ -315,5 +314,12 @@ class CourseService {
     return this.getCourseDetail(courseId)
   }
 }
+
+exports.createCourse = CourseService.createCourse
+exports.listCoachCourses = CourseService.listCoachCourses
+exports.browseCourses = CourseService.browseCourses
+exports.listAllCourses = CourseService.listAllCourses
+exports.getCourseDetail = CourseService.getCourseDetail
+exports.updateCourse = CourseService.updateCourse
 
 module.exports = CourseService

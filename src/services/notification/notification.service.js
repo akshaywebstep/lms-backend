@@ -1,4 +1,3 @@
-'use strict'
 
 const { Notification, User } = require('../../models')
 const { makeId } = require('../../utils/id')
@@ -71,5 +70,10 @@ class NotificationService {
     return { success: true }
   }
 }
+
+exports.listForUser = NotificationService.listForUser
+exports.create = NotificationService.create
+exports.markAsRead = NotificationService.markAsRead
+exports.markAllAsRead = NotificationService.markAllAsRead
 
 module.exports = NotificationService

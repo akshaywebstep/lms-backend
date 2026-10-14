@@ -1,4 +1,3 @@
-'use strict'
 
 const { Payment, Enrollment, Course, User, Notification } = require('../../models')
 const { makeId } = require('../../utils/id')
@@ -83,5 +82,8 @@ class PaymentService {
     return payments
   }
 }
+
+exports.enrollInCourse = PaymentService.enrollInCourse
+exports.listPaymentsForUser = PaymentService.listPaymentsForUser
 
 module.exports = PaymentService

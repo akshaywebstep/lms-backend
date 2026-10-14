@@ -1,4 +1,3 @@
-'use strict'
 
 const { DataTypes } = require('sequelize')
 const { sequelize } = require('../config/db')
@@ -13,6 +12,8 @@ const Session = sequelize.define(
     user_id: {
       type: DataTypes.STRING(64),
       allowNull: false,
+      references: { model: 'users', key: 'id' },
+      onDelete: 'CASCADE',
     },
     access_token_id: {
       type: DataTypes.STRING(64),

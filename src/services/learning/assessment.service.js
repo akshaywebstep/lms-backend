@@ -1,4 +1,3 @@
-'use strict'
 
 const {
   Quiz,
@@ -452,5 +451,20 @@ class AssessmentService {
     return sub
   }
 }
+
+exports.listQuizzesForCoach = AssessmentService.listQuizzesForCoach
+exports.getQuizDetail = AssessmentService.getQuizDetail
+exports.createQuiz = AssessmentService.createQuiz
+exports.updateQuiz = AssessmentService.updateQuiz
+exports.removeQuiz = AssessmentService.removeQuiz
+exports.listAssignmentsForCoach = AssessmentService.listAssignmentsForCoach
+exports.createAssignment = AssessmentService.createAssignment
+exports.updateAssignment = AssessmentService.updateAssignment
+exports.removeAssignment = AssessmentService.removeAssignment
+exports.reviewSubmission = AssessmentService.reviewSubmission
+exports.listStudentQuizzes = AssessmentService.listStudentQuizzes
+exports.attemptStudentQuiz = AssessmentService.attemptStudentQuiz
+exports.listStudentAssignments = AssessmentService.listStudentAssignments
+exports.submitStudentAssignment = AssessmentService.submitStudentAssignment
 
 module.exports = AssessmentService

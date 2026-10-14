@@ -1,5 +1,3 @@
-'use strict'
-
 const express = require('express')
 const router = express.Router()
 
@@ -16,58 +14,40 @@ const { auth } = require('../middleware/auth')
 const { ROLES } = require('../config/constants')
 const { created, ok, fail } = require('../utils/response')
 
-const h = (fn) => (req, res, next) => {
-  const searchParams = new URLSearchParams()
-  for (const [k, v] of Object.entries(req.query || {})) {
-    if (Array.isArray(v)) v.forEach((val) => searchParams.append(k, val))
-    else if (v !== undefined) searchParams.set(k, String(v))
-  }
-  const ctx = {
-    req,
-    res,
-    params: req.params,
-    query: searchParams,
-    body: req.body,
-    user: req.user,
-    tokenPayload: req.tokenPayload,
-  }
-  return fn(ctx).catch(next)
-}
-
 // ─── Profile Routes ───────────────────────────────────────────────────────────
-router.get('/profile', auth(), h(profileController.getProfile))
-router.put('/profile', auth(), h(profileController.updateProfile))
+router.get('/profile', auth(), profileController.getProfile)
+router.put('/profile', auth(), profileController.updateProfile)
 
 // ─── Payment Routes ───────────────────────────────────────────────────────────
-router.post('/payments/checkout', auth([ROLES.STUDENT]), h(paymentController.checkout))
-router.post('/students/enrollment/checkout', auth([ROLES.STUDENT]), h(paymentController.checkout))
-router.post('/payments/create-order', auth([ROLES.STUDENT]), h(paymentController.createOrder))
-router.post('/payments/verify', auth([ROLES.STUDENT]), h(paymentController.verify))
-router.post('/student/enroll', auth([ROLES.STUDENT]), h(paymentController.enroll))
-router.get('/payments/history', auth(), h(paymentController.history))
+router.post('/payments/checkout', auth([ROLES.STUDENT]), paymentController.checkout)
+router.post('/students/enrollment/checkout', auth([ROLES.STUDENT]), paymentController.checkout)
+router.post('/payments/create-order', auth([ROLES.STUDENT]), paymentController.createOrder)
+router.post('/payments/verify', auth([ROLES.STUDENT]), paymentController.verify)
+router.post('/student/enroll', auth([ROLES.STUDENT]), paymentController.enroll)
+router.get('/payments/history', auth(), paymentController.history)
 
 // ─── Notification Routes ──────────────────────────────────────────────────────
-router.get('/notifications', auth(), h(notificationController.list))
-router.post('/notifications', auth(), h(notificationController.create))
-router.patch('/notifications/read-all', auth(), h(notificationController.markAllRead))
-router.patch('/notifications/:id/read', auth(), h(notificationController.markRead))
+router.get('/notifications', auth(), notificationController.list)
+router.post('/notifications', auth(), notificationController.create)
+router.patch('/notifications/read-all', auth(), notificationController.markAllRead)
+router.patch('/notifications/:id/read', auth(), notificationController.markRead)
 
 // ─── Search Routes ────────────────────────────────────────────────────────────
-router.get('/search', auth(), h(searchController.run))
+router.get('/search', auth(), searchController.run)
 
 // ─── Master Data (Public) ─────────────────────────────────────────────────────
-router.get('/master-data', auth(), h(masterDataController.listPublic))
+router.get('/master-data', auth(), masterDataController.listPublic)
 
 // ─── Email Templates (CRUD Accessible by Admin & Staff) ───────────────────────
 const staffOnly = auth([ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.COACH])
 const adminOnly = auth([ROLES.ADMIN, ROLES.SUPER_ADMIN])
-router.get('/email-templates', staffOnly, h(emailConfigController.list))
-router.get('/email-templates/:id', staffOnly, h(emailConfigController.getById))
-router.post('/email-templates', adminOnly, h(emailConfigController.create))
-router.put('/email-templates/:id', staffOnly, h(emailConfigController.update))
-router.post('/email-templates/:id/reset', staffOnly, h(emailConfigController.reset))
-router.delete('/email-templates/:id', adminOnly, h(emailConfigController.remove))
-router.post('/email-templates/:id/test-send', staffOnly, h(emailConfigController.testSend))
+router.get('/email-templates', staffOnly, emailConfigController.list)
+router.get('/email-templates/:id', staffOnly, emailConfigController.getById)
+router.post('/email-templates', adminOnly, emailConfigController.create)
+router.put('/email-templates/:id', staffOnly, emailConfigController.update)
+router.post('/email-templates/:id/reset', staffOnly, emailConfigController.reset)
+router.delete('/email-templates/:id', adminOnly, emailConfigController.remove)
+router.post('/email-templates/:id/test-send', staffOnly, emailConfigController.testSend)
 
 // ─── Upload Routes ────────────────────────────────────────────────────────────
 const createUpload = (fileType) => async (req, res, next) => {
@@ -111,7 +91,7 @@ router.post('/upload/image', auth(), createUpload('image'))
 router.post('/upload/video', auth(), createUpload('video'))
 router.post('/upload/document', auth(), createUpload('document'))
 
-// ─── Sub-routers (Synconode standard domain routers) ──────────────────────────
+// ─── Sub-routers (standard domain routers) ──────────────────────────
 router.use('/auth', require('./auth'))
 router.use('/admin', require('./admin'))
 router.use('/coach', require('./coach'))

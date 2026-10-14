@@ -1,4 +1,3 @@
-'use strict'
 
 const cleanEmail = (email = '') => String(email).trim().toLowerCase()
 

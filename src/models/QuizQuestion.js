@@ -1,4 +1,3 @@
-'use strict'
 
 const { DataTypes } = require('sequelize')
 const { sequelize } = require('../config/db')
@@ -13,6 +12,8 @@ const QuizQuestion = sequelize.define(
     quiz_id: {
       type: DataTypes.STRING(64),
       allowNull: false,
+      references: { model: 'quizzes', key: 'id' },
+      onDelete: 'CASCADE',
     },
     question_text: {
       type: DataTypes.TEXT,

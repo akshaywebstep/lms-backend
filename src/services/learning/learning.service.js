@@ -1,4 +1,3 @@
-'use strict'
 
 const {
   Lesson,
@@ -57,6 +56,41 @@ class LearningService {
     }))
   }
 
+  static async getLessonDetail(lessonId, coachId = null) {
+    const courseWhere = coachId ? { coach_id: coachId } : {}
+    const lesson = await Lesson.findOne({
+      where: { id: lessonId },
+      include: [
+        {
+          model: Course,
+          as: 'course',
+          where: courseWhere,
+          attributes: ['id', 'title', 'slug', 'category', 'difficulty', 'language', 'thumbnail_url', 'promo_video', 'coach_id'],
+        },
+        { model: LessonTopic, as: 'topics' },
+      ],
+    })
+    if (!lesson) return null
+
+    return {
+      id: lesson.id,
+      courseId: lesson.course_id,
+      title: lesson.title,
+      description: lesson.description,
+      contentType: lesson.content_type,
+      contentUrl: lesson.content_url,
+      durationMinutes: lesson.duration_minutes,
+      isPreview: Boolean(lesson.is_preview),
+      sortOrder: lesson.sort_order,
+      dripDays: lesson.drip_days,
+      status: lesson.status,
+      topics: lesson.topics || [],
+      course: lesson.course,
+      createdAt: lesson.created_at,
+      updatedAt: lesson.updated_at,
+    }
+  }
+
   static async createLesson(coachId, body) {
     const course = await Course.findOne({ where: { id: body.courseId, coach_id: coachId } })
     if (!course) return null
@@ -78,6 +112,24 @@ class LearningService {
       status: body.status || 'published',
     })
 
+    if (Array.isArray(body.topics) && body.topics.length > 0) {
+      for (let i = 0; i < body.topics.length; i++) {
+        const top = body.topics[i]
+        const topTitle = (top?.title || top?.name || '').trim()
+        if (topTitle) {
+          await LessonTopic.create({
+            id: makeId('topic'),
+            lesson_id: lesson.id,
+            title: topTitle,
+            body: top.body || '',
+            sort_order: Number(top.sortOrder !== undefined ? top.sortOrder : i + 1) || (i + 1),
+          })
+        }
+      }
+    }
+
+    const createdTopics = await LessonTopic.findAll({ where: { lesson_id: lesson.id }, order: [['sort_order', 'ASC']] })
+
     return {
       id: lesson.id,
       courseId: lesson.course_id,
@@ -90,6 +142,7 @@ class LearningService {
       sortOrder: lesson.sort_order,
       dripDays: lesson.drip_days,
       status: lesson.status,
+      topics: createdTopics,
     }
   }
 
@@ -112,7 +165,49 @@ class LearningService {
     if (body.status) updates.status = body.status
 
     await Lesson.update(updates, { where: { id: lessonId } })
-    return Lesson.findByPk(lessonId)
+
+    if (Array.isArray(body.topics)) {
+      const existingTopics = await LessonTopic.findAll({ where: { lesson_id: lessonId } })
+      const existingMap = new Map(existingTopics.map((t) => [t.id, t]))
+      const incomingIds = new Set()
+
+      for (let i = 0; i < body.topics.length; i++) {
+        const top = body.topics[i]
+        const topTitle = (top?.title || top?.name || '').trim()
+        if (!topTitle) continue
+
+        if (top.id && existingMap.has(top.id)) {
+          incomingIds.add(top.id)
+          await LessonTopic.update(
+            {
+              title: topTitle,
+              body: top.body || '',
+              sort_order: Number(top.sortOrder !== undefined ? top.sortOrder : i + 1) || (i + 1),
+            },
+            { where: { id: top.id } }
+          )
+        } else {
+          const newTopic = await LessonTopic.create({
+            id: makeId('topic'),
+            lesson_id: lessonId,
+            title: topTitle,
+            body: top.body || '',
+            sort_order: Number(top.sortOrder !== undefined ? top.sortOrder : i + 1) || (i + 1),
+          })
+          incomingIds.add(newTopic.id)
+        }
+      }
+
+      for (const ex of existingTopics) {
+        if (!incomingIds.has(ex.id)) {
+          await LessonTopic.destroy({ where: { id: ex.id } })
+        }
+      }
+    }
+
+    return Lesson.findByPk(lessonId, {
+      include: [{ model: LessonTopic, as: 'topics' }],
+    })
   }
 
   static async removeLesson(lessonId, coachId) {
@@ -343,5 +438,28 @@ class LearningService {
     return { progress: pct, status: record.status }
   }
 }
+
+exports.listLessonsForCoach = LearningService.listLessonsForCoach
+exports.getLessonDetail = LearningService.getLessonDetail
+exports.createLesson = LearningService.createLesson
+exports.updateLesson = LearningService.updateLesson
+exports.removeLesson = LearningService.removeLesson
+exports.listTopicsForCoach = LearningService.listTopicsForCoach
+exports.createTopic = LearningService.createTopic
+exports.updateTopic = LearningService.updateTopic
+exports.deleteTopic = LearningService.deleteTopic
+exports.listQuizzesForCoach = LearningService.listQuizzesForCoach
+exports.createQuiz = LearningService.createQuiz
+exports.getQuizDetail = LearningService.getQuizDetail
+exports.updateQuiz = LearningService.updateQuiz
+exports.deleteQuiz = LearningService.deleteQuiz
+exports.listStudentQuizzes = LearningService.listStudentQuizzes
+exports.submitQuiz = LearningService.submitQuiz
+exports.getQuizAttempts = LearningService.getQuizAttempts
+exports.listCoachMaterials = LearningService.listCoachMaterials
+exports.createCoachMaterial = LearningService.createCoachMaterial
+exports.deleteCoachMaterial = LearningService.deleteCoachMaterial
+exports.getStudentCourseLearnData = LearningService.getStudentCourseLearnData
+exports.updateStudentLessonProgress = LearningService.updateStudentLessonProgress
 
 module.exports = LearningService

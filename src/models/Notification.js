@@ -1,4 +1,3 @@
-'use strict'
 
 const { DataTypes } = require('sequelize')
 const { sequelize } = require('../config/db')
@@ -18,10 +17,14 @@ const Notification = sequelize.define(
     sender_id: {
       type: DataTypes.STRING(64),
       allowNull: true,
+      references: { model: 'users', key: 'id' },
+      onDelete: 'SET NULL',
     },
     recipient_id: {
       type: DataTypes.STRING(64),
       allowNull: true,
+      references: { model: 'users', key: 'id' },
+      onDelete: 'CASCADE',
     },
     recipient_role: {
       type: DataTypes.ENUM('admin', 'coach', 'student', 'all'),

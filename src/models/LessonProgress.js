@@ -1,4 +1,3 @@
-'use strict'
 
 const { DataTypes } = require('sequelize')
 const { sequelize } = require('../config/db')
@@ -14,10 +13,14 @@ const LessonProgress = sequelize.define(
     enrollment_id: {
       type: DataTypes.STRING(64),
       allowNull: false,
+      references: { model: 'enrollments', key: 'id' },
+      onDelete: 'CASCADE',
     },
     lesson_id: {
       type: DataTypes.STRING(64),
       allowNull: false,
+      references: { model: 'lessons', key: 'id' },
+      onDelete: 'CASCADE',
     },
     status: {
       type: DataTypes.ENUM('not_started', 'in_progress', 'completed'),

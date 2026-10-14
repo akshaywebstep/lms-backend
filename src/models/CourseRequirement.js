@@ -1,4 +1,3 @@
-'use strict'
 
 const { DataTypes } = require('sequelize')
 const { sequelize } = require('../config/db')
@@ -14,6 +13,8 @@ const CourseRequirement = sequelize.define(
     course_id: {
       type: DataTypes.STRING(64),
       allowNull: false,
+      references: { model: 'courses', key: 'id' },
+      onDelete: 'CASCADE',
     },
     sort_order: {
       type: DataTypes.INTEGER,

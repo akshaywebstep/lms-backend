@@ -1,4 +1,3 @@
-'use strict'
 
 const { DataTypes } = require('sequelize')
 const { sequelize } = require('../config/db')
@@ -22,6 +21,8 @@ const EmailConfig = sequelize.define(
     coach_id: {
       type: DataTypes.STRING(64),
       allowNull: true,
+      references: { model: 'users', key: 'id' },
+      onDelete: 'SET NULL',
     },
     subject: {
       type: DataTypes.STRING(255),

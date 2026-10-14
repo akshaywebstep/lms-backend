@@ -1,22 +1,14 @@
-'use strict'
-
 const { env } = require('../config/db')
 const { readToken } = require('../services/token')
 const { fail } = require('../utils/response')
 const UserService = require('../services/profile/profileService')
-const { Session, RevokedToken } = require('../models')
-const { Op } = require('sequelize')
+const { RevokedToken } = require('../models')
 
 /**
- * Universal Auth Middleware supporting both Express (req, res, next) and Context (ctx, next)
+ * Standard Express Auth Middleware (req, res, next)
  */
-const auth = (roles = []) => async (reqOrCtx, resOrNext, nextFn) => {
-  const isExpress = Boolean(nextFn)
-  const req = isExpress ? reqOrCtx : reqOrCtx.req
-  const res = isExpress ? resOrNext : reqOrCtx.res
-  const next = isExpress ? nextFn : resOrNext
-
-  const header = req.headers.authorization || ''
+const auth = (roles = []) => async (req, res, next) => {
+  const header = req.headers?.authorization || ''
   const token = header.startsWith('Bearer ') ? header.slice(7) : ''
   if (!token) return fail(res, 401, 'Missing bearer token')
 
@@ -40,15 +32,9 @@ const auth = (roles = []) => async (reqOrCtx, resOrNext, nextFn) => {
   if (user.status !== 'active') return fail(res, 401, 'User is not active')
   if (roles.length && !roles.includes(user.role)) return fail(res, 403, 'You are not allowed to access this resource')
 
-  if (isExpress) {
-    req.user = user
-    req.tokenPayload = payload
-    req.env = env
-  } else {
-    reqOrCtx.user = user
-    reqOrCtx.tokenPayload = payload
-    reqOrCtx.env = env
-  }
+  req.user = user
+  req.tokenPayload = payload
+  req.env = env
 
   return next()
 }

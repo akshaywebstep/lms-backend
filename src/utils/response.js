@@ -1,6 +1,5 @@
-'use strict'
 
-const sendJson = (res, statusCode, payload) => {
+exports.sendJson = (res, statusCode, payload) => {
   if (typeof res.status === 'function' && typeof res.json === 'function') {
     return res.status(statusCode).json(payload)
   }
@@ -9,10 +8,29 @@ const sendJson = (res, statusCode, payload) => {
   res.end(JSON.stringify(payload))
 }
 
-const ok = (res, payload = {}) => sendJson(res, 200, payload)
-const created = (res, payload = {}) => sendJson(res, 201, payload)
+exports.ok = (res, data = {}, message = 'Operation completed successfully.') => {
+  if (data && typeof data === 'object' && 'status' in data && 'data' in data) {
+    return exports.sendJson(res, 200, data)
+  }
+  return exports.sendJson(res, 200, {
+    status: true,
+    message: typeof message === 'string' ? message : 'Operation completed successfully.',
+    data: data !== undefined ? data : null,
+  })
+}
 
-const noContent = (res) => {
+exports.created = (res, data = {}, message = 'Resource created successfully.') => {
+  if (data && typeof data === 'object' && 'status' in data && 'data' in data) {
+    return exports.sendJson(res, 201, data)
+  }
+  return exports.sendJson(res, 201, {
+    status: true,
+    message: typeof message === 'string' ? message : 'Resource created successfully.',
+    data: data !== undefined ? data : null,
+  })
+}
+
+exports.noContent = (res) => {
   if (typeof res.status === 'function' && typeof res.send === 'function') {
     return res.status(204).send()
   }
@@ -20,7 +38,12 @@ const noContent = (res) => {
   res.end()
 }
 
-const fail = (res, statusCode, message, details) =>
-  sendJson(res, statusCode, { success: false, message, ...(details ? { details } : {}) })
-
-module.exports = { sendJson, ok, created, noContent, fail }
+exports.fail = (res, statusCode = 400, message = 'Something went wrong.', details = null) => {
+  return exports.sendJson(res, statusCode, {
+    status: false,
+    success: false,
+    message: typeof message === 'string' ? message : 'An error occurred.',
+    data: details || null,
+    ...(details ? { details } : {}),
+  })
+}

@@ -1,38 +1,49 @@
-'use strict'
-
 const PaymentService = require('../../services/payment/payment.service')
 const { ok, created, fail } = require('../../utils/response')
+const { logActivity } = require('../../services/activity/activityLogService')
 
-const checkout = async (ctx) => {
+const getReqRes = (a, b) => {
+  if (!b && a?.res) return { req: a.req || a, res: a.res }
+  return { req: a, res: b }
+}
+
+exports.checkout = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
   try {
-    const result = await PaymentService.checkout(ctx.user, ctx.body)
-    return ok(ctx.res, result)
+    const result = await PaymentService.checkout(req.user, req.body)
+
+    await logActivity({
+      req,
+      userId: req.user.id,
+      role: req.user.role,
+      action: 'COURSE_ENROLLMENT',
+      module: 'payments',
+      description: `Student ${req.user.name} enrolled in course (Amount: ₹${result.payment?.amount || req.body?.amount || 0})`,
+      status: 'success',
+      metadata: { courseId: req.body?.courseId, paymentId: result.payment?.id },
+    })
+
+    return ok(res, result, 'Course enrollment completed successfully.')
   } catch (err) {
-    return fail(ctx.res, err.status || 500, err.message)
+    return fail(res, err.status || 500, err.message)
   }
 }
 
-const createOrder = async (ctx) => {
-  return checkout(ctx)
+exports.createOrder = async (rawReq, rawRes) => {
+  return exports.checkout(rawReq, rawRes)
 }
 
-const verify = async (ctx) => {
-  return ok(ctx.res, { success: true, verified: true })
+exports.verify = async (rawReq, rawRes) => {
+  const { res } = getReqRes(rawReq, rawRes)
+  return ok(res, { success: true, verified: true }, 'Payment verified successfully.')
 }
 
-const enroll = async (ctx) => {
-  return checkout(ctx)
+exports.enroll = async (rawReq, rawRes) => {
+  return exports.checkout(rawReq, rawRes)
 }
 
-const history = async (ctx) => {
-  const payments = await PaymentService.listPaymentsForUser(ctx.user.id)
-  return ok(ctx.res, { payments, history: payments })
-}
-
-module.exports = {
-  checkout,
-  createOrder,
-  verify,
-  enroll,
-  history,
+exports.history = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const payments = await PaymentService.listPaymentsForUser(req.user.id)
+  return ok(res, { payments, history: payments }, 'Payment history fetched successfully.')
 }

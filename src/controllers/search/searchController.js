@@ -1,13 +1,23 @@
-'use strict'
-
 const { Course, User } = require('../../models')
 const { ok } = require('../../utils/response')
 const { Op } = require('sequelize')
 
-const run = async (ctx) => {
-  const query = ctx.query.get('q') || ctx.query.get('query') || ctx.query.get('search') || ''
-  if (!query.trim()) {
-    return ok(ctx.res, { courses: [], users: [], results: [] })
+const getReqRes = (a, b) => {
+  if (!b && a?.res) return { req: a.req || a, res: a.res }
+  return { req: a, res: b }
+}
+
+exports.run = async (rawReq, rawRes) => {
+  const { req, res } = getReqRes(rawReq, rawRes)
+  const query =
+    req.query?.q ||
+    req.query?.query ||
+    req.query?.search ||
+    (typeof req.query?.get === 'function' ? req.query.get('q') || req.query.get('query') || req.query.get('search') : '') ||
+    ''
+
+  if (!String(query).trim()) {
+    return ok(res, { courses: [], users: [], results: [] }, 'Search completed.')
   }
 
   const [courses, users] = await Promise.all([
@@ -35,7 +45,5 @@ const run = async (ctx) => {
     }),
   ])
 
-  return ok(ctx.res, { courses, users, results: [...courses, ...users] })
+  return ok(res, { courses, users, results: [...courses, ...users] }, 'Search completed successfully.')
 }
-
-module.exports = { run }
